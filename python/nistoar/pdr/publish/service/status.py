@@ -1,6 +1,6 @@
 """
 This module provides tools for managing and retrieving the status of a 
-preservation efforts across multiple processes.  
+publishing efforts across multiple processes.  
 """
 import json, os, time, fcntl, re
 from collections import OrderedDict
@@ -18,12 +18,13 @@ PROCESSING = "processing"    # The SIP contents are being processed; further act
                              #  until processing completes.
 FINALIZED  = "finalized"     # The SIP has been finalized and is ready to be published; additional
                              #  actions other than to publish may change the state to PENDING or AWAITING.
+SUBMITTED  = "submitted"     # The SIP was submitted for preservation
 PUBLISHED  = "published"     # SIP was successfully published
 FAILED     = "failed"        # an attempt to publish (or finalize) was made but failed due to an
                              #  unexpected state or condition; SIP must be updated (or rebuilt from
                              #  scratch) before it can be published 
 
-states = [ NOT_FOUND, AWAITING, PENDING, PROCESSING, FINALIZED, PUBLISHED, FAILED ]
+states = [ NOT_FOUND, AWAITING, PENDING, PROCESSING, FINALIZED, SUBMITTED, PUBLISHED, FAILED ]
 
 user_message = {
     NOT_FOUND:   "Submission not found or available",
@@ -31,6 +32,7 @@ user_message = {
     PENDING:     "Submission is available to be published",
     PROCESSING:  "Submission is being processed (please stand by)",
     FINALIZED:   "Submission is ready to be published",
+    SUBMITTED:   "Submission was submitted for preservation and publication",
     PUBLISHED:   "Submission was successfully published",
     FAILED:      "Submission cannot be published due to previous error"
 }
@@ -245,7 +247,8 @@ class SIPStatus(object):
         """
         the SIP's status state.  
 
-        :return str:  one of NOT_FOUND, AWAITING, PENDING, PROCESSING, FINALIZED, PUBLISHED, FAILED
+        :return str:  one of NOT_FOUND, AWAITING, PENDING, PROCESSING, FINALIZED, PUBLISHED, 
+                             SUBMITTED, FAILED
         """
         return self._data['user']['state']
 
@@ -318,7 +321,7 @@ class SIPStatus(object):
             for key in userdata:
                 if key not in handsoff:
                     self._data['user'][key] = userdata[key]
-            
+
         self._data['user']['state'] = label
         self._data['user']['message'] = message
         if cache:
