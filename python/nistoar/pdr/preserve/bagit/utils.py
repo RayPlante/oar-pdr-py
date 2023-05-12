@@ -14,8 +14,8 @@ from collections import Sequence, Mapping, OrderedDict
 from urllib.parse import urlparse
 from copy import deepcopy
 
-from ...preserve.bagit.builder import (NERDM_SCH_ID_BASE, NERDM_SCH_VER, NERDMPUB_SCH_VER,
-                                       NERDMBIB_SCH_ID_BASE, NERDMBIB_SCH_VER)
+from .builder import (NERDM_SCH_ID_BASE, NERDM_SCH_VER, NERDMPUB_SCH_VER,
+                      NERDMBIB_SCH_ID_BASE, NERDMBIB_SCH_VER)
 from nistoar.id.versions import Version, cmp_versions
 
 DEF_MBAG_VERSION = "0.4"

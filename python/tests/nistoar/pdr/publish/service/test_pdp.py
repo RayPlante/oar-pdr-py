@@ -8,8 +8,7 @@ from copy import deepcopy
 
 from nistoar.testing import *
 from nistoar.pdr import utils
-from nistoar.pdr.preserve.bagit import NISTBag
-from nistoar.pdr.publish.bagger import utils as bagutils
+from nistoar.pdr.preserve.bagit import NISTBag, utils as bagutils
 import nistoar.pdr.preserve.bagit.builder as bldr
 import nistoar.pdr.exceptions as exceptions
 from nistoar.pdr.publish import prov

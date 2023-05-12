@@ -3,7 +3,7 @@ import unittest as test
 from copy import deepcopy
 
 from nistoar.testing import *
-from nistoar.pdr.publish.bagger import utils as bagut
+from nistoar.pdr.preserve.bagit import utils as bagut
 from nistoar.nerdm.constants import CORE_SCHEMA_URI, PUB_SCHEMA_URI
 
 # Note: Version and cmp_versions() have moved to nistoar.id.versions

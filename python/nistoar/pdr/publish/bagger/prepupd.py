@@ -28,12 +28,11 @@ from time import mktime
 
 from .base import system
 from .. import (ConfigurationException, StateException, CorruptedBagError, NERDError)
-from . import utils as bagutils
 from ...describe import rmm
 from ... import distrib
 from ...exceptions import IDNotFound
 from ... import utils
-from ...preserve.bagit import NISTBag, BagBuilder
+from ...preserve.bagit import NISTBag, BagBuilder, utils as bagutils
 from ....nerdm.convert import latest as nerdm_latest
 
 PENDING_VERSION_SFX = "+ (in edit)"

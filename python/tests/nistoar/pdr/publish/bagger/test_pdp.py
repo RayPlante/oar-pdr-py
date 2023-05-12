@@ -15,9 +15,8 @@ from copy import deepcopy
 from nistoar.testing import *
 from nistoar.pdr import utils
 import nistoar.pdr.preserve.bagit.builder as bldr
-from nistoar.pdr.preserve.bagit import NISTBag
+from nistoar.pdr.preserve.bagit import NISTBag, utils as bagutils
 import nistoar.pdr.publish.bagger.pdp as pdp
-from nistoar.pdr.publish.bagger import utils as bagutils
 import nistoar.pdr.exceptions as exceptions
 from nistoar.pdr.preserve import AIPValidationError
 from nistoar.pdr.publish import idmint as minter
