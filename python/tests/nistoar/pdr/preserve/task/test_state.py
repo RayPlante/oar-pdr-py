@@ -52,11 +52,13 @@ class TestPreservationStateManager(test.TestCase):
             "_aipid": "goober",
             "_orig_aip": "goober/bag",
             "_stage_dir": "stage",
+            "_work_dir": None,
             "_completed": 0,
             "_message": st.UNSTARTED_PROGRESS
         })
         self.assertEqual(self.state.get_original_aip(), "goober/bag")
         self.assertEqual(self.state.get_stage_dir(), "stage")
+        self.assertIsNone(self.state.get_working_dir())
         self.assertEqual(self.state.steps_completed, 0)
         with open(self.state._cachefile) as fd:
             self.assertEqual(json.load(fd), self.state._data)
@@ -69,6 +71,7 @@ class TestPreservationStateManager(test.TestCase):
             "_aipid": "goober",
             "_orig_aip": "goober/bag",
             "_stage_dir": "stage",
+            "_work_dir": None,
             "_completed": 0,
             "_message": st.UNSTARTED_PROGRESS
         })
@@ -87,6 +90,7 @@ class TestPreservationStateManager(test.TestCase):
             "_aipid": "foo",
             "_orig_aip": "goober/bag",
             "_stage_dir": "stage",
+            "_work_dir": None,
             "_completed": 0,
             "_message": st.UNSTARTED_PROGRESS
         })
@@ -107,6 +111,7 @@ class TestPreservationStateManager(test.TestCase):
             "_aipid": "goober",
             "_orig_aip": "goober/bag",
             "_stage_dir": "stage",
+            "_work_dir": None,
             "_completed": 0,
             "_message": st.UNSTARTED_PROGRESS
         })
@@ -128,11 +133,13 @@ class TestPreservationStateManager(test.TestCase):
             "_aipid": "goober",
             "_orig_aip": None,
             "_stage_dir": None,
+            "_work_dir": None,
             "_completed": 0,
             "_message": st.UNSTARTED_PROGRESS
         })
         self.assertIsNone(self.state.get_original_aip())
         self.assertIsNone(self.state.get_stage_dir())
+        self.assertIsNone(self.state.get_working_dir())
         self.assertEqual(self.state.steps_completed, 0)
         with open(self.state._cachefile) as fd:
             self.assertEqual(json.load(fd), self.state._data)
@@ -157,6 +164,11 @@ class TestPreservationStateManager(test.TestCase):
             st.JSONPreservationStateManager()
         with self.assertRaises(ValueError):
             st.JSONPreservationStateManager(persistin="goober.json")
+
+    def test_get_working_dir(self):
+        self.cfg['working_dir'] = "work"
+        self.state = st.JSONPreservationStateManager(self.cfg, "goober", "goober/bag")
+        self.assertEqual(self.state.get_working_dir(), "work")
 
     def test_mark_completed(self):
         self.assertEqual(self.state.steps_completed, 0)

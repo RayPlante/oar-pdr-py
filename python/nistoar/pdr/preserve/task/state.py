@@ -98,9 +98,12 @@ class JSONPreservationStateManager(PreservationStateManager):
                 self._data["_orig_aip"] = aiploc
             if self.cfg.get("stage_dir"):
                 self._data["_stage_dir"] = self.cfg.get("stage_dir")
+            if self.cfg.get("working_dir"):
+                self._data["_work_dir"] = self.cfg.get("working_dir")
             self._cache()
         else:
-            self._init_state(_aipid=self._aipid, _orig_aip=aiploc, _stage_dir=self.cfg.get("stage_dir"))
+            self._init_state(_aipid=self._aipid, _orig_aip=aiploc,
+                             _stage_dir=self.cfg.get("stage_dir"), _work_dir=self.cfg.get("working_dir"))
 
     def _init_state(self, **kw):
         self._data = OrderedDict(kw)
@@ -300,3 +303,12 @@ class JSONPreservationStateManager(PreservationStateManager):
 
         if self._pubstat:
             self._pubstat.record_progress(message)
+
+    def get_working_dir(self) -> str:
+        """
+        return the path to a directory where presevation steps can write intermediated data or 
+        custom logs.  (Steps should cleanup unneeded intermediate data during clean-up.)
+        :return:  the path to the directory or None if one is not available.
+                  :rtype: str
+        """
+        return self._data.get('_work_dir')

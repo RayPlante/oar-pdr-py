@@ -26,6 +26,8 @@ import logging
 from logging import Logger
 from typing import List
 
+from nistoar.pdr.preserve import PreservationException
+
 UNSTARTED_PROGRESS = "waiting to start preservation"
 
 class PreservationStepsAware:
@@ -250,6 +252,16 @@ class PreservationStateManager(PreservationStepsAware, metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def get_working_dir(self) -> str:
+        """
+        return the path to a directory where presevation steps can write intermediated data or 
+        custom logs.  (Steps should cleanup unneeded intermediate data during clean-up.)
+        :return:  the path to the directory or None if one is not available.
+                  :rtype: str
+        """
+        raise NotImplementedError()
+
 
 class PreservationStep(metaclass=ABCMeta):
     """
@@ -366,9 +378,10 @@ class AIPValidation(PreservationStep):
     archiving.  Implementations encapsulate a set of requirements that the underlying AIP 
     must meet.  
 
-    Note that the :py:meth:`apply` method should raise an :py:class:`AIPNotValid` exception if 
-    the AIP does not meet its validation requirements and :py:class:`AIPValidationException` if 
-    a failure occurs while trying to apply the process itself.  
+    Note that the :py:meth:`apply` method should raise an 
+    :py:class:`~nistoar.pdr.exceptions.AIPValidationError` exception if the AIP does not meet 
+    its validation requirements and :py:class:`AIPValidationException` if a failure occurs 
+    while trying to apply the process itself.  
     """
     
     def revert(self, statemgr: PreservationStateManager) -> bool:
@@ -548,8 +561,8 @@ class PreservationTask(PreservationStepsAware):
                   :rtype: bool
         :raises AIPValidationException:  if the process fails to complete this validation step
                   successfully.  
-        :raises AIPNotValid:  if the AIP was found to be invalid or otherwise did not meet the 
-                              requirements for preservation
+        :raises AIPValidationError:  if the AIP was found to be invalid or otherwise did not meet the 
+                  requirements for preservation
         """
         if not as_is:
             if self.validated():
@@ -738,4 +751,152 @@ class PreservationTaskFactory(metaclass=ABCMeta):
     def _create_publisher(self, config: Mapping) -> AIPPublication:
         raise NotImplementedError()
         
+
+class PreservationTaskException(PreservationException):
+    """
+    a base class for exceptions that occur while executing a preservation task.
+    """
+    def __init__(self, msg: str=None, aipid: str=None, task: str=None, errors: List[str]=None):
+        """
+        create the exception, optionally list things that went wrong for the AIP
+        :param str     msg:  a general message describing the failure
+        :param str   aipid:  the ID of the AIP being processed
+        :param str    task:  the name of the step in the preservation task where the 
+                             exception occured.  While this is usually set in the subclass's
+                             constructor, it is not requred to match a step defined in this moudule
+        :param list errors:  a list of specific error messages indicating the multiple errors 
+                             that occurred.
+        """
+        self.task = task or ""
+        self.aipid = aipid
+        if not msg:
+            msg = f"Problem during preservation"
+            if self.task:
+                msg += f" {self.task}"
+            if self.aipid:
+                msg += f" for AIP={self.aipid}"
+            msg = self._append_error_preview(msg, errors)
+                
+        super(PreservationTaskException, self).__init__(msg, errors)
+
+    def _append_error_preview(self, msg: str, errors: List[str]):
+        if errors and isinstance(errors, (list, tuple)):
+            msg += ": {errors[0]}"
+            if len(errors) > 1:
+                msg += " (and other errors)"
+        else:
+            msg += ": cause unknown"
+        return msg
+
+
+class AIPFinalizationException(PreservationTaskException):
+    """
+    an exception that occurs while attempting to apply the finalization step in a processing task
+    """
+    def __init__(self, msg=None, aipid=None, errors=None, task=None):
+        """
+        create the exception, optionally list things that went wrong for the AIP
+        :param str     msg:  a general message describing the failure
+        :param str   aipid:  the ID of the AIP being processed
+        :param list errors:  a list of specific error messages indicating the multiple errors 
+                             that occurred.
+        """
+        if not task:
+            task = "finalization"
+        if not msg:
+            msg = f"Failure while finalizing AIP"
+            if aipid:
+                msg += f"={aipid}"
+            msg = self._append_error_preview(msg, errors)
+        super(AIPFinalizationException, self).__init__(msg, aipid, task, errors)
+
+
+class AIPValidationException(PreservationTaskException):
+    """
+    an exception that occurs while attempting to apply the finalization step in a processing task
+    """
+    def __init__(self, msg=None, aipid=None, errors=None, task=None):
+        """
+        create the exception, optionally list things that went wrong for the AIP
+        :param str     msg:  a general message describing the failure
+        :param str   aipid:  the ID of the AIP being processed
+        :param list errors:  a list of specific error messages indicating the multiple errors 
+                             that occurred.
+        """
+        if not task:
+            task = "validation"
+        if not msg:
+            msg = "Failure while validating AIP"
+            if aipid:
+                msg += f"={aipid}"
+            msg = self._append_error_preview(msg, errors)
+        super(AIPValidationException, self).__init__(msg, aipid, task, errors)
+
+
+class AIPSerialzationException(PreservationTaskException):
+    """
+    an exception that occurs while attempting to apply the finalization step in a processing task
+    """
+    def __init__(self, msg=None, aipid=None, errors=None, task=None):
+        """
+        create the exception, optionally list things that went wrong for the AIP
+        :param str     msg:  a general message describing the failure
+        :param str   aipid:  the ID of the AIP being processed
+        :param list errors:  a list of specific error messages indicating the multiple errors 
+                             that occurred.
+        """
+        if not task:
+            task = "serialization"
+        if not msg:
+            msg = f"Failure while serializing AIP"
+            if aipid:
+                msg += f"={aipid}"
+            msg = self._append_error_preview(msg, errors)
+        super(AIPSerialzationException, self).__init__(msg, aipid, task, errors)
+
+
+class AIPArchivingException(PreservationTaskException):
+    """
+    an exception that occurs while attempting to apply the finalization step in a processing task
+    """
+    def __init__(self, msg=None, aipid=None, errors=None, task=None):
+        """
+        create the exception, optionally list things that went wrong for the AIP
+        :param str     msg:  a general message describing the failure
+        :param str   aipid:  the ID of the AIP being processed
+        :param list errors:  a list of specific error messages indicating the multiple errors 
+                             that occurred.
+        """
+        if not task:
+            task = "archiving"
+        if not msg:
+            msg = f"Failure while archiving AIP"
+            if aipid:
+                msg += f"={aipid}"
+            msg = self._append_error_preview(msg, errors)
+        super(AIPArchivingException, self).__init__(msg, aipid, task, errors)
+
+
+class AIPPublicationException(PreservationTaskException):
+    """
+    an exception that occurs while attempting to apply the finalization step in a processing task
+    """
+    def __init__(self, msg=None, aipid=None, errors=None, task=None):
+        """
+        create the exception, optionally list things that went wrong for the AIP
+        :param str     msg:  a general message describing the failure
+        :param str   aipid:  the ID of the AIP being processed
+        :param list errors:  a list of specific error messages indicating the multiple errors 
+                             that occurred.
+        """
+        if not task:
+            task = "publication"
+        if not msg:
+            msg = f"Failure while publishing AIP"
+            if aipid:
+                msg += f"={aipid}"
+            msg = self._append_error_preview(msg, errors)
+        super(AIPPublicationException, self).__init__(msg, aipid, task, errors)
+
+
 
