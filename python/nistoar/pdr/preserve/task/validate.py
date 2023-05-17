@@ -66,6 +66,8 @@ class NISTBagValidation(fw.AIPValidation):
         instantiate the validator step.
         :param dict config:  the configuration for this step; if not provided, defaults will apply.
         """
+        if config is None:
+            config = {}
         self.cfg = config
 
     def apply(self, statemgr: fw.PreservationStateManager):
@@ -196,8 +198,9 @@ class NISTBagValidation(fw.AIPValidation):
 
     def _save_results(self, info, res, statemgr):
         outdir = statemgr.get_working_dir()
+        log = statemgr.log.getLogger('validate')
         if not outdir:
-            statemgr.log.debug("Won't record validation results; no working directory available")
+            log.debug("Won't record validation results; no working directory available")
             return
         
         outfile = Path(outdir) / "validation_results.json"
@@ -206,7 +209,7 @@ class NISTBagValidation(fw.AIPValidation):
         info['failed'] = []
         for issue in res.failed(res.ALL):
             info['failed'].append(issue.to_json_obj())
-        if self.cfg.get("record_passed") or statemgr.log.isEnabledFor(logging.DEBUG):
+        if self.cfg.get("record_passed") or log.isEnabledFor(logging.DEBUG):
             info['passed'] = []
             for issue in res.passed(res.ALL):
                 info['passed'].append(issue.to_json_obj())
@@ -215,7 +218,7 @@ class NISTBagValidation(fw.AIPValidation):
             with LockedFile(outfile, 'w') as fd:
                 json.dump(info, fd, indent=2)
         except Exception as ex:
-            statemgr.log.warning("Failed to record validation results: %s", str(ex))
+            log.warning("Failed to record validation results: %s", str(ex))
 
 
         
