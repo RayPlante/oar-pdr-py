@@ -4,12 +4,12 @@ Module providing client-side support for the RMM ingest service.
 import os, sys, shutil, logging, json
 from collections import Mapping, Sequence, OrderedDict
 
-from .exceptions import (StateException, ConfigurationException, PDRException, NERDError)
-from .utils import write_json, read_nerd, read_json
-from ..doi import datacite as dc
-from ..pdr import def_jq_libdir, def_schema_dir
-from .. import jq
-from ..nerdm import validate as valid8, constants as nerdconst
+from nistoar.pdr.exceptions import (StateException, ConfigurationException, PDRException, NERDError)
+from nistoar.pdr.utils import write_json, read_nerd, read_json
+from nistoar.doi import datacite as dc
+from nistoar.pdr import def_jq_libdir, def_schema_dir
+from nistoar import jq
+from nistoar.nerdm import validate as valid8, constants as nerdconst
 
 class DOIMintingClient(object):
     """

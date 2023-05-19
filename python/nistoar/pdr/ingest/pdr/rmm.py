@@ -4,12 +4,11 @@ Module providing client-side support for the RMM ingest service.
 import os, sys, shutil, logging, requests
 from collections import Mapping, Sequence, OrderedDict
 
-from ..exceptions import (StateException, ConfigurationException, PDRException,
-                          NERDError)
-from ..utils import write_json, read_nerd
+from nistoar.pdr.exceptions import (StateException, ConfigurationException, PDRException,
+                                    NERDError)
+from nistoar.pdr.utils import write_json, read_nerd
 
-def submit_for_ingest(record, endpoint, name=None,
-                      authkey=None, authmeth='qparam'):
+def submit_for_ingest(record, endpoint, name=None, authkey=None, authmeth='qparam'):
     """
     Send the given JSON data-object to the ingest service.
 
