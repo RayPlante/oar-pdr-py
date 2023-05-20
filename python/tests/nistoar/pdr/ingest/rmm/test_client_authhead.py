@@ -4,7 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from nistoar.testing import *
-from nistoar.pdr.ingest.pdr import rmm
+from nistoar.pdr.ingest.rmm import client as rmm
 
 testdir = Path(__file__).resolve().parents[0]
 basedir = testdir.parents[5]
@@ -23,7 +23,7 @@ def startService(authmeth=None):
 #        srvport += 1
     pidfile = os.path.join(tdir,"simsrv"+str(srvport)+".pid")
     
-    wpy = "python/tests/nistoar/pdr/ingest/pdr/sim_ingest_srv.py"
+    wpy = "python/tests/nistoar/pdr/ingest/rmm/sim_ingest_srv.py"
     cmd = "uwsgi --daemonize {0} --plugin python3 --http-socket :{1} " \
           "--wsgi-file {2} --set-ph auth_key=critic --set-ph auth_meth=header " \
           "--pidfile {3}"
@@ -39,8 +39,7 @@ def stopService(authmeth=None):
 #        srvport += 1
     pidfile = os.path.join(tdir,"simsrv"+str(srvport)+".pid")
     
-    cmd = "uwsgi --stop {0}".format(os.path.join(tdir,
-                                                 "simsrv"+str(srvport)+".pid"))
+    cmd = "uwsgi --stop {0}".format(os.path.join(tdir, "simsrv"+str(srvport)+".pid"))
     os.system(cmd)
     time.sleep(1)
 

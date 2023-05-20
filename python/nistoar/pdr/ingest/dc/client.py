@@ -1,5 +1,6 @@
 """
-Module providing client-side support for the RMM ingest service.  
+Module providing client-side support for the DataCite DOI service and PDR's use of it for creating
+and updating DOIs.  
 """
 import os, sys, shutil, logging, json
 from collections import Mapping, Sequence, OrderedDict
