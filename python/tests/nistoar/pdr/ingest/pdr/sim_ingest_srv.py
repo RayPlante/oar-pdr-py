@@ -1,5 +1,6 @@
 from __future__ import print_function
 import json, os, cgi, sys
+from urllib.parse import parse_qs
 from wsgiref.headers import Headers
 
 try:
@@ -13,6 +14,14 @@ except ImportError:
 
 authkey = uwsgi.opt.get("auth_key")
 authmeth = uwsgi.opt.get("auth_meth", "qparam")
+try:
+    authkey = authkey.decode()
+except (UnicodeDecodeError, AttributeError):
+    pass
+try:
+    authmeth = authmeth.decode()
+except (UnicodeDecodeError, AttributeError):
+    pass
             
 class SimIngest(object):
     def handle_request(self, env, start_resp):
@@ -53,7 +62,7 @@ class SimIngestHandler(object):
         meth_handler = 'do_'+self._meth
 
         path = self._env.get('PATH_INFO', '/')[1:]
-        params = cgi.parse_qs(self._env.get('QUERY_STRING', ''))
+        params = parse_qs(self._env.get('QUERY_STRING', ''))
         print("AUTH METHOD: %s" % self._auth[0], file=sys.stderr)
         if not self.authorize():
             return self.send_unauthorized()
@@ -70,13 +79,14 @@ class SimIngestHandler(object):
             return self.authorize_via_queryparam()
 
     def authorize_via_queryparam(self):
-        params = cgi.parse_qs(self._env.get('QUERY_STRING', ''))
+        params = parse_qs(self._env.get('QUERY_STRING', ''))
         auths = params.get('auth',[])
+        print(f"Requst auth={str(auths)} for {self._auth[1]}", file=sys.stderr)
         if self._auth[1]:
             # match the last value provided
             return len(auths) > 0 and self._auth[1] == auths[-1]  
         if len(auths) > 0:
-            log.warn("Authorization key provided, but none has been configured")
+            log.warning("Authorization key provided, but none has been configured")
         return len(auths) == 0
 
     def authorize_via_headertoken(self):
@@ -87,7 +97,7 @@ class SimIngestHandler(object):
             return len(parts) > 1 and parts[0] == "Bearer" and \
                 self._auth[1] == parts[1]
         if authhdr:
-            log.warn("Authorization key provided, but none has been configured")
+            log.warning("Authorization key provided, but none has been configured")
         return authhdr == ""
 
     def send_unauthorized(self):
@@ -102,7 +112,7 @@ class SimIngestHandler(object):
         if not path:
             try:
                 out = json.dumps(["nerdm", "invalid"]) + '\n'
-            except Exception, ex:
+            except Exception as ex:
                 return self.send_error(500, "Internal error")
 
             self.set_response(200, "Supported Record Types")
@@ -138,16 +148,16 @@ class SimIngestHandler(object):
     def post_nerdm_record(self):
         try:
             clen = int(self._env['CONTENT_LENGTH'])
-        except KeyError, ex:
+        except KeyError as ex:
             return self.send_error(411, "Content-Length is required")
-        except ValueError, ex:
+        except ValueError as ex:
             return self.send_error(400, "Content-Length is not an integer")
 
         try:
             bodyin = self._env['wsgi.input']
             doc = bodyin.read(clen)
             rec = json.loads(doc)
-        except Exception, ex:
+        except Exception as ex:
             return self.send_error(400,
                                    "Failed to load input record (bad format?): "+
                                    str(ex))
@@ -160,12 +170,13 @@ class SimIngestHandler(object):
         self.set_response(400, "Input record is not valid")
         self.add_header('Content-Type', 'application/json')
         self.end_headers()
-        return [ json.dumps([
+        out = json.dumps([
             "You have three misspelled words.",
             "The description is too flowery.",
             "And no one's taking responsibility for this embarrassment.",
             "In other words, I didn't bother to read it."
-        ])
-                 + '\n' ]
+        ]) + '\n'
+                 
+        return [ out.encode() ]
     
 application = SimIngest()

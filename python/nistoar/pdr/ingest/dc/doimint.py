@@ -30,8 +30,8 @@ class DOIMintingClient(object):
         if not self.naan:
             raise ConfigurationException("Missing required config param: minting_naan")
         if isinstance(self.naan, (float, int)):
-            self.log.warn("DOIMintingClient: Numeric 'minting_naan' specified in configuration; "+
-                          "converting to string")
+            self.log.warning("DOIMintingClient: Numeric 'minting_naan' specified in configuration; "+
+                             "converting to string")
             self.naan = str(self.naan)
 
         dccfg = self._cfg.get('datacite_api')
@@ -83,8 +83,7 @@ class DOIMintingClient(object):
 
         self.submit_mode = self._cfg.get("submit", "named")
         if self.submit_mode not in "named all none":
-            self.log.warn("submit config value not recognized: %s",
-                          self.submit_mode)
+            self.log.warning("submit config value not recognized: %s", self.submit_mode)
 
         jqlib = self._cfg.get('jq_lib', def_jq_libdir)
         self._jqt = jq.Jq('datacite::resource2datacite', jqlib, ["nerdm2datacite:datacite"])
@@ -222,14 +221,14 @@ class DOIMintingClient(object):
                 raise
             except dc.DOIResolverError as ex:
                 # server's fault; try again later
-                self.log.warn("%s: unexpected service error: %s (will try again later)",
-                              name, str(ex))
+                self.log.warning("%s: unexpected service error: %s (will try again later)",
+                                 name, str(ex))
                 shutil.move(recfile, self._stagedir)
                 raise
             except dc.DOICommunicationError as ex:
                 # network's fault; try again later
-                self.log.warn("%s: unexpected comm error: %s (will try again later)",
-                              name, str(ex))
+                self.log.warning("%s: unexpected comm error: %s (will try again later)",
+                                 name, str(ex))
                 shutil.move(recfile, self._stagedir)
                 raise
             except Exception as ex:
@@ -347,8 +346,7 @@ class DOIMintingClient(object):
                 self.submit_staged(name)
                 return { "succeeded": [name], "failed": [], "skipped": [] }
             else:
-                self.log.warn("submit mode is named, but record name not "+
-                              "provided")
+                self.log.warning("submit mode is named, but record name not provided")
                 return { "succeeded": [], "failed": [],
                          "skipped": [n for n in staged if n==name] }
 

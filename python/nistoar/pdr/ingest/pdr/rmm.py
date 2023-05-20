@@ -137,19 +137,19 @@ class IngestClient(object):
 
         self._endpt = get_endpoint(self._cfg)
         if self._endpt and not self._endpt.startswith('https://'):
-            self.log.warn("Non-HTTPS endpoint for ingest service: " +
-                          self._cfg.get("service_endpoint","?"))
+            self.log.warning("Non-HTTPS endpoint for ingest service: %s", 
+                             self._cfg.get("service_endpoint","?"))
         self._auth = [self._cfg.get('auth_method', 'qparam'),
                       self._cfg.get('auth_key', "")]
         if self._auth[0] not in ["qparam", "header"]:
-            self.log.warn("authorization method not recognized: " +
-                          self._auth[0] + "; reverting to 'header'")
+            self.log.warning("authorization method not recognized: %s; reverting to 'header'",
+                             self._auth[0])
             self._auth[0] = 'header'
 
         self.submit_mode = self._cfg.get("submit", "named")
         if self.submit_mode not in "named all none":
-            self.log.warn("submit config value not recognized: %s",
-                          self.submit_mode)
+            self.log.warning("submit config value not recognized: %s",
+                             self.submit_mode)
 
     @property
     def endpoint(self):
@@ -239,8 +239,7 @@ class IngestClient(object):
                 raise
             except IngestServerError as ex:
                 # server's fault; try again later
-                self.log.warn("Ingest Server problem: {0} (will try again later)"
-                              .format(str(ex)))
+                self.log.warning("Ingest Server problem: %s (will try again later)", str(ex))
                 shutil.move(recfile, self._stagedir)
                 raise
             except IngestClientError as ex:
@@ -287,13 +286,13 @@ class IngestClient(object):
                 raise StateException(msg, cause=ex)
 
     def _report_validation_errors(self, errs, name):
-        if isinstance(errs, (str, unicode)):
+        if isinstance(errs, str):
             # shouldn't happen
             errs = [ errs ]
         elif not isinstance(errs, Sequence):
             # shouldn't happen
-            self.log.warn("Unrecognized format for validation errors "+
-                          "from ingest service")
+            self.log.warning("Unrecognized format for validation errors "+
+                             "from ingest service")
             errs = [ str(errs) ]
 
         errmsg = "Validation Errors: \n * "
@@ -352,8 +351,7 @@ class IngestClient(object):
                 self.submit_staged(name)
                 return { "succeeded": [name], "failed": [], "skipped": [] }
             else:
-                self.log.warn("submit mode is named, but record name not "+
-                              "provided")
+                self.log.warning("submit mode is named, but record name not provided")
                 return { "succeeded": [], "failed": [],
                          "skipped": [n for n in staged if n==name] }
 

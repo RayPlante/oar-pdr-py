@@ -1,17 +1,17 @@
 import os, pdb, sys, json, requests, logging, time, re, shutil
 import unittest as test
 from copy import deepcopy
-from collections import Mapping
+from collections.abc import Mapping
+from pathlib import Path
 
 from nistoar.testing import *
-from nistoar.pdr.ingest import rmm
+from nistoar.pdr.ingest.pdr import rmm
 
-testdir = os.path.dirname(os.path.abspath(__file__))
-basedir = os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.dirname(testdir)))))
-oarmetadir = os.path.join(basedir, "oar-metadata")
-testrec = os.path.join(oarmetadir, "model", "examples", "hitsc.json")
-assert os.path.exists(testrec)
+testdir = Path(__file__).resolve().parents[0]
+basedir = testdir.parents[5]
+oarmetadir = basedir / "metadata"
+testrec = oarmetadir / "model" / "examples" / "hitsc.json"
+assert testrec.exists()
 
 port = 9091
 url = "http://localhost:{0}/nerdm/".format(port)
@@ -24,8 +24,8 @@ def startService(authmeth=None):
         srvport += 1
     pidfile = os.path.join(tdir,"simsrv"+str(srvport)+".pid")
     
-    wpy = "python/tests/nistoar/pdr/ingest/sim_ingest_srv.py"
-    cmd = "uwsgi --daemonize {0} --plugin python --http-socket :{1} " \
+    wpy = "python/tests/nistoar/pdr/ingest/pdr/sim_ingest_srv.py"
+    cmd = "uwsgi --daemonize {0} --plugin python3 --http-socket :{1} " \
           "--wsgi-file {2} --set-ph auth_key=critic --pidfile {3}"
     cmd = cmd.format(os.path.join(tdir,"simsrv.log"), srvport,
                      os.path.join(basedir, wpy), pidfile)
@@ -61,6 +61,8 @@ def tearDownModule():
     if loghdlr:
         if rootlog:
             rootlog.removeHandler(loghdlr)
+            loghdlr.flush()
+            loghdlr.close()
         loghdlr = None
     stopService()
     rmtmpdir()

@@ -1,10 +1,11 @@
 from __future__ import absolute_import
 import os, pdb, sys, json, requests, logging, time, re, hashlib, shutil
-from collections import Mapping
+from collections.abc import Mapping
+from pathlib import Path
 import unittest as test
 
 from nistoar.testing import *
-import nistoar.pdr.doimint as dm
+import nistoar.pdr.ingest.dc.doimint as dm
 from nistoar.pdr.utils import read_nerd, read_json
 from nistoar.pdr.exceptions import NERDError, ConfigurationException
 from nistoar.nerdm import constants as nerdconst
@@ -13,13 +14,13 @@ port = 9091
 baseurl = "http://localhost:{0}/dois".format(port)
 prefixes = ["10.88434", "20.88434"]
 
-pdrdir = os.path.dirname(os.path.abspath(__file__))
-datadir = os.path.join(pdrdir, "describe", "data")
-tstnerd = os.path.join(datadir, "pdr2210.json")
+pdrdir = Path(__file__).resolve().parents[2]
+datadir = pdrdir / "describe" / "data"
+tstnerd = datadir / "pdr2210.json"
 
-basedir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(pdrdir))))
-ormdir = os.path.join(basedir, "oar-metadata")
-mocksvr = os.path.join(ormdir, "python", "nistoar", "doi", "tests", "sim_datacite_srv.py")
+basedir = pdrdir.parents[3]
+ormdir = basedir / "metadata"
+mocksvr = ormdir / "python" / "tests" / "nistoar" / "doi" / "sim_datacite_srv.py"
 
 def startService():
     tdir = tmpdir()
@@ -27,7 +28,7 @@ def startService():
     pidfile = os.path.join(tdir,"simsrv"+str(srvport)+".pid")
     
     wpy = "python/nistoar/doi/tests/sim_datacite_srv.py"
-    cmd = "uwsgi --daemonize {0} --plugin python --http-socket :{1} " \
+    cmd = "uwsgi --daemonize {0} --plugin python3 --http-socket :{1} " \
           "--wsgi-file {2} --pidfile {3} --set-ph prefixes={4}"
     cmd = cmd.format(os.path.join(tdir,"simsrv.log"), srvport, mocksvr,
                      pidfile, ",".join(prefixes))
@@ -61,6 +62,8 @@ def tearDownModule():
     if loghdlr:
         if rootlog:
             rootlog.removeHandler(loghdlr)
+            loghdlr.flush()
+            loghdlr.close()
         loghdlr = None
 #    stopService()
     shutil.rmtree(tmpdir())
