@@ -7,6 +7,7 @@ from shutil import copy as filecopy, rmtree
 from copy import deepcopy
 from collections import Mapping, Sequence, OrderedDict
 from urllib.parse import quote as urlencode
+from pathlib import Path
 
 from .. import PreservationSystem
 from .. import ConfigurationException, StateException, PODError
@@ -242,6 +243,18 @@ class BagBuilder(PreservationSystem):
             if not self._nerdm_schema_id.endswith('#'):
                 self._nerdm_schema_id += '#'
 
+    @classmethod
+    def forBag(cls, bagdir, config=None, logger=None):
+        """
+        create a BagBuilder for an existing bag
+        :param str|Path bagdir:  the root directory for the existing bag
+        """
+        if isinstance(bagdir, str):
+            bagdir = Path(bagdir).resolve()
+        if not bagdir.is_dir():
+            raise ValueError("BagBuilder.forBag(): bagdir does not exist: "+bagdir)
+        return cls(bagdir.parent, bagdir.name, config, logger=logger)
+
     def __del__(self):
         self.disconnect_logfile()
 
@@ -320,6 +333,13 @@ class BagBuilder(PreservationSystem):
         hdlr.setLevel(loglevel)
         
         self.plog.addHandler(hdlr)
+
+    def done(self):
+        """
+        indicate that no further changes are expected to the underlying bag and release resources
+        accordingly.  This implementation disconnects the internal log file. 
+        """
+        self.disconnect_logfile()
 
     def disconnect_logfile(self, logfile=None):
         """

@@ -289,7 +289,6 @@ class PreservationStep(metaclass=ABCMeta):
         """
         self.revert(statemgr)
         self.apply(statemgr)
-        self.report_completed(statemgr)
         try:
             self.clean_up(statemgr)
         except PreservationException as ex:

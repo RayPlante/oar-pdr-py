@@ -186,7 +186,7 @@ class DistribServiceException(PDRServiceException):
     def __init__(self, message, resource=None, http_code=None, http_reason=None, 
                  cause=None):
         super(DistribServiceException, self).__init__("distribution",
-                                resource, http_code, http_status, message, cause)
+                                resource, http_code, http_reason, message, cause)
 
 class DistribServerError(PDRServerError):
     """
