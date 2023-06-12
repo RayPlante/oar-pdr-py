@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest as test
 
 from nistoar.testing import *
-import nistoar.pdr.ingest.dc.doimint as dm
+import nistoar.pdr.ingest.dc.client as dm
 from nistoar.pdr.utils import read_nerd, read_json
 from nistoar.pdr.exceptions import NERDError, ConfigurationException
 from nistoar.nerdm import constants as nerdconst
@@ -164,6 +164,10 @@ class TestDOIMintingClientQuiet(test.TestCase):
         nerd['@id'] = "ark:/88888/{0}".format(os.path.splitext(os.path.basename(tstnerd))[0])
         self.dmcli.stage(nerd, False)
 
+        names = self.dmcli.staged_names()
+        self.assertIn("pdr2210", names)
+        self.assertEqual(len(names), 1)
+
         out = os.path.join(self.workdir, "staging", os.path.basename(tstnerd))
         self.assertTrue(os.path.exists(out))
         dcmd = read_json(out)
@@ -171,6 +175,20 @@ class TestDOIMintingClientQuiet(test.TestCase):
         self.assertEqual(dcmd['titles'], [{'title': nerd['title']}])
         self.assertEqual(dcmd['url'], nerd['landingPage'])
         self.assertNotIn('event', dcmd)
+
+        self.dmcli.stage(nerd, False, "bro")
+        names = self.dmcli.staged_names()
+        self.assertIn("pdr2210", names)
+        self.assertIn("bro", names)
+        self.assertEqual(len(names), 2)
+
+        self.dmcli.unstage('pdr2210')
+        self.assertTrue(os.path.exists(os.path.join(self.dmcli._stagedir, "bro.json")))
+        self.assertTrue(not os.path.exists(os.path.join(self.dmcli._stagedir, "pdr2210.json")))
+        names = self.dmcli.staged_names()
+        self.assertIn("bro", names)
+        self.assertNotIn("pdr2210", names)
+        self.assertEqual(len(names), 1)
 
     def test_stage_names(self):
         nerd = read_nerd(tstnerd)
@@ -396,6 +414,50 @@ class TestDOIMintingClientMockSrvr(test.TestCase):
         doi = self.dmcli.dccli.lookup("goob3", relax=True)
         self.assertTrue(doi.exists)
         self.assertEqual(doi.state, "draft")
+
+    def test_clear(self):
+        shutil.copy(tstnerd, os.path.join(self.dmcli._stagedir, "hank.json"))
+        shutil.copy(tstnerd, os.path.join(self.dmcli._inprogdir, "hank.json"))
+        shutil.copy(tstnerd, os.path.join(self.dmcli._publishdir, "hank.json"))
+        shutil.copy(tstnerd, os.path.join(self.dmcli._faildir, "hank.json"))
+
+        found = self.dmcli.find_named("hank")
+        for tp in "staged in_progress published failed".split():
+            self.assertTrue(found.get(tp))
+
+        self.dmcli.clear("hank", True)
+        found = self.dmcli.find_named("hank")
+        self.assertIn("staged", found)
+        self.assertIn("published", found)
+        self.assertEqual(len(found), 2)
+
+        self.dmcli.clear("hank", False)
+        found = self.dmcli.find_named("hank")
+        self.assertIn("published", found)
+        self.assertEqual(len(found), 1)
+
+    def test_forget(self):
+        shutil.copy(tstnerd, os.path.join(self.dmcli._stagedir, "hank.json"))
+        shutil.copy(tstnerd, os.path.join(self.dmcli._inprogdir, "hank.json"))
+        shutil.copy(tstnerd, os.path.join(self.dmcli._publishdir, "hank.json"))
+        shutil.copy(tstnerd, os.path.join(self.dmcli._faildir, "hank.json"))
+
+        found = self.dmcli.find_named("hank")
+        for tp in "staged in_progress published failed".split():
+            self.assertTrue(found.get(tp))
+
+        self.dmcli.forget("hank")
+        found = self.dmcli.find_named("hank")
+        self.assertEqual(len(found), 0)
+
+        shutil.copy(tstnerd, os.path.join(self.dmcli._stagedir, "hank.json"))
+        shutil.copy(tstnerd, os.path.join(self.dmcli._faildir, "hank.json"))
+        found = self.dmcli.find_named("hank")
+        self.assertEqual(len(found), 2)
+
+        self.dmcli.forget("hank")
+        found = self.dmcli.find_named("hank")
+        self.assertEqual(len(found), 0)
 
 
 if __name__ == '__main__':

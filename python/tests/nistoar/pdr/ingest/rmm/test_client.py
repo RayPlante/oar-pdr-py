@@ -178,6 +178,14 @@ class TestIngestClient(test.TestCase):
         self.assertIn("bro", names)
         self.assertEqual(len(names), 2)
 
+        self.cl.unstage('bro')
+        self.assertTrue(not os.path.exists(os.path.join(self.stagedir, "bro.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.stagedir, "bru.json")))
+        names = self.cl.staged_names()
+        self.assertIn("bru", names)
+        self.assertNotIn("bro", names)
+        self.assertEqual(len(names), 1)
+
     def test_submit_staged(self):
         rec = getrec()
         self.cl.stage(rec, 'bru')
@@ -354,6 +362,52 @@ class TestIngestClient(test.TestCase):
         self.assertIn('succeeded', found)
         self.assertEqual(found['staged'], sfile)
         self.assertEqual(found['failed'], os.path.join(self.faildir, "bru.json"))
+
+    def test_clear(self):
+        shutil.copy(testrec, os.path.join(self.stagedir, "hank.json"))
+        shutil.copy(testrec, os.path.join(self.inprogdir, "hank.json"))
+        shutil.copy(testrec, os.path.join(self.successdir, "hank.json"))
+        shutil.copy(testrec, os.path.join(self.faildir, "hank.json"))
+
+        found = self.cl.find_named("hank")
+        for tp in "staged in_progress succeeded failed".split():
+            self.assertTrue(found.get(tp))
+
+        self.cl.clear("hank", True)
+        found = self.cl.find_named("hank")
+        self.assertIn("staged", found)
+        self.assertIn("succeeded", found)
+        self.assertEqual(len(found), 2)
+
+        self.cl.clear("hank", False)
+        found = self.cl.find_named("hank")
+        self.assertIn("succeeded", found)
+        self.assertEqual(len(found), 1)
+
+    def test_forget(self):
+        shutil.copy(testrec, os.path.join(self.stagedir, "hank.json"))
+        shutil.copy(testrec, os.path.join(self.inprogdir, "hank.json"))
+        shutil.copy(testrec, os.path.join(self.successdir, "hank.json"))
+        shutil.copy(testrec, os.path.join(self.faildir, "hank.json"))
+
+        found = self.cl.find_named("hank")
+        for tp in "staged in_progress succeeded failed".split():
+            self.assertTrue(found.get(tp))
+
+        self.cl.forget("hank")
+        found = self.cl.find_named("hank")
+        self.assertEqual(len(found), 0)
+
+        shutil.copy(testrec, os.path.join(self.stagedir, "hank.json"))
+        shutil.copy(testrec, os.path.join(self.faildir, "hank.json"))
+        found = self.cl.find_named("hank")
+        self.assertEqual(len(found), 2)
+
+        self.cl.forget("hank")
+        found = self.cl.find_named("hank")
+        self.assertEqual(len(found), 0)
+
+        
 
 
 

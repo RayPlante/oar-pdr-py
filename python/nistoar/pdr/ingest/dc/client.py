@@ -4,6 +4,7 @@ and updating DOIs.
 """
 import os, sys, shutil, logging, json
 from collections import Mapping, Sequence, OrderedDict
+from pathlib import Path
 
 from nistoar.pdr.exceptions import (StateException, ConfigurationException, PDRException, NERDError)
 from nistoar.pdr.utils import write_json, read_nerd, read_json
@@ -179,21 +180,81 @@ class DOIMintingClient(object):
         return name in self.staged_names()
             
 
+    def unstage(self, name):
+        """
+        remove a pending record waiting to be submitted
+        :return:  False if the named record was not currently found to be staged, or 
+                  True if the the named record was cleared from the staging area.
+                  :rtype: bool
+        """
+        stagefile = os.path.join(self._stagedir, name+".json")
+        if os.path.exists(stagefile):
+            try:
+                os.unlink(stagefile);
+                return True
+            except OSError as ex:
+                raise StateException(f"Failed to unstage {name}: {str(ex)}", cause=ex)
+        return False
+
+    def clear(self, name, restage=None):
+        """
+        clear out pending or unsuccessful submitted records with the given name.  In particular,
+        this will remove the records matching the given name from the staging, inprogress, and failed 
+        cached areas.  
+
+        :param str         name:  the name of the record to operate on (without any file extensions)
+        :param bool|str restage:  if True or a string, (re-)stage the record after cleaning up other 
+                                  copies of the record.  A string value indicates with version of the 
+                                  record to re-stage and should be one of the names returned by 
+                                  :py:meth:`find_named`.  If the value is True, the version re-staged 
+                                  will be whichever version exists, with the order of preference being 
+                                  "staged", "in_progress", then "failed".  Note that no error is raised 
+                                  if the record is not found in the requested location.  
+        """
+        out = False
+        sources = "staged in_progress failed".split()
+        
+        locs = self.find_named(name)
+        resub = None
+        if isinstance(restage, str):
+            resub = locs.get(restage)
+        elif restage:
+            resub = locs.get('staged') or locs.get('in_progress') or locs.get('failed')
+
+        for stage in sources:
+            if locs.get(stage) and locs.get(stage) != resub and os.path.isfile(locs[stage]):
+                os.unlink(locs[stage])
+                out = True
+        if resub:
+            resub = Path(resub)
+            if not resub.is_file() and str(resub.parent) != self.stagedir:
+                if restage in sources:
+                    shutil.move(resub, os.path.join(self.stagedir, resub.name))
+                else:
+                    shutil.copy(resub, os.path.join(self.stagedir, resub.name))
+                out = True
+
+        return out
+
     def submit_staged(self, name):
         """
         submit the record with the given name to the ingest service.  The 
         record file will be moved to the appropriate location based on the 
         outcome.  
         :param str name:      name of the record to submit
-        :raises IngestClientError:  raised ingest fails due to a client problem 
-                                    such as the record is found to be invalid.
-        :raises IngestServerError:  raised if ingest fails due to a server 
-                                    error or otherwise does not respond.  
-        :raises IngestAuthzError:   raised if the ingest fails due to an 
-                                    authorization error.  
-        :raises StateException:     raised if an error occurs while reading 
-                                    the record file or moving the file between
-                                    directories.  
+        :raises DOIClientException:    raised if submission fails due to a client problem,
+                                       such as the record is found to be invalid.  The record
+                                       will be marked as failed.
+        :raises DOICommunicationError: raised if submission fails due to a server 
+                                       communication failure, like not being accessible.
+                                       The record will be returned a staged state to be 
+                                       resubmitted later.
+        :raises DOIResolverError:      raised if the submission failed due to a server error.
+                                       The record will be returned a staged state to be 
+                                       resubmitted later.
+        :raises StateException:        raised if an error occurs while reading 
+                                       the record file or moving the file between
+                                       directories.  
         """
         if not self.dccli:
             raise ConfigurationException("No service endpoint provided in "+
@@ -381,6 +442,20 @@ class DOIMintingClient(object):
 
         return out
 
+    def forget(self, name):
+        """
+        remove all cached records with the given name, regardless of it status.
+        """
+        errs=[]
+        found = self.find_named(name)
+        for state in found:
+            try:
+                os.unlink(found[state])
+            except OSError as ex:
+                errs.append(f"Failed to remove {found[state]}: {str(ex)}")
+        if errs:
+            self.log.error("Failed to clear out memory of %s:\n  %s", name, 
+                           "\n  ".join(errs))
 
 
                                           

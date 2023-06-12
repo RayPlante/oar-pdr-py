@@ -3,6 +3,7 @@ Module providing client-side support for the RMM ingest service.
 """
 import os, sys, shutil, logging, requests
 from collections import Mapping, Sequence, OrderedDict
+from pathlib import Path
 
 from nistoar.pdr.exceptions import (StateException, ConfigurationException, PDRException,
                                     NERDError)
@@ -58,16 +59,16 @@ def submit_for_ingest(record, endpoint, name=None, authkey=None, authmeth='qpara
     except ValueError as ex:
         if resp.text and ("<body" in resp.text or "<BODY" in resp.text):
             raise IngestServerError(message="HTML returned where JSON expected "+
-                                    "(is service URL correct?)")
+                                    "(is service URL correct?)") from ex
         else:
             raise IngestServerError(message="Unable to parse response as JSON "+
-                                    "(is service URL correct?)")
+                                    "(is service URL correct?)") from ex
     except requests.RequestException as ex:
         msg = "Trouble connecting to ingest service"
         if ex.request:
             msg += " via " + ex.request.url
         msg += ": "+ str(ex)
-        raise IngestServerError(message=msg, cause=ex)
+        raise IngestServerError(message=msg) from ex
     
 def get_endpoint(config):
     """
@@ -133,7 +134,7 @@ class IngestClient(object):
                     
         except OSError as ex:
             raise StateException("Failed to create needed directory: {0}: {1}"
-                                 .format(mdir, str(ex)))
+                                 .format(mdir, str(ex))) from ex
 
         self._endpt = get_endpoint(self._cfg)
         if self._endpt and not self._endpt.startswith('https://'):
@@ -198,6 +199,67 @@ class IngestClient(object):
         """
         return name in self.staged_names()
             
+    def unstage(self, name):
+        """
+        remove a pending record waiting to be submitted
+        :return:  False if the named record was not currently found to be staged, or 
+                  True if the the named record was cleared from the staging area.
+                  :rtype: bool
+        """
+        stagefile = os.path.join(self._stagedir, name+".json")
+        if os.path.exists(stagefile):
+            try:
+                os.unlink(stagefile);
+                return True
+            except OSError as ex:
+                raise StateException(f"Failed to unstage {name}: {str(ex)}") from ex
+        return False
+
+    def clear(self, name, restage=None):
+        """
+        clear out pending or unsuccessful submitted records with the given name.  In particular,
+        this will remove the records matching the given name from the staging, inprogress, and failed 
+        cached areas.  
+
+        :param str         name:  the name of the record to operate on (without any file extensions)
+        :param bool|str restage:  if True or a string, (re-)stage the record after cleaning up other 
+                                  copies of the record.  A string value indicates with version of the 
+                                  record to re-stage and should be one of the names returned by 
+                                  :py:meth:`find_named`.  If the value is True, the version re-staged 
+                                  will be whichever version exists, with the order of preference being 
+                                  "staged", "in_progress", then "failed".  Note that no error is raised 
+                                  if the record is not found in the requested location.  
+        """
+        out = False
+        sources = "staged in_progress failed".split()
+        
+        locs = self.find_named(name)
+        resub = None
+        if isinstance(restage, str):
+            resub = locs.get(restage)
+        elif restage:
+            resub = locs.get('staged') or locs.get('in_progress') or locs.get('failed')
+
+        for stage in sources:
+            if locs.get(stage) and locs.get(stage) != resub and os.path.isfile(locs[stage]):
+                os.unlink(locs[stage])
+                out = True
+        if resub:
+            resub = Path(resub)
+            if not resub.is_file() and str(resub.parent) != self.stagedir:
+                if restage in sources:
+                    shutil.move(resub, os.path.join(self.stagedir, resub.name))
+                else:
+                    shutil.copy(resub, os.path.join(self.stagedir, resub.name))
+                out = True
+
+        return out
+
+    # TODO?
+    #   clear(restage: bool)
+    #   forget()
+        
+
     def submit_staged(self, name):
         """
         submit the record with the given name to the ingest service.  The 
@@ -271,7 +333,7 @@ class IngestClient(object):
             msg = "{0}: Failed to move {1} file to {2}: {3}" \
                   .format(name, state[0], state[1], str(ex))
             self.log.exception(msg)
-            raise StateException(msg, cause=ex)
+            raise StateException(msg) from ex
         
         except (IOError, NERDError) as ex:
             # problem reading file
@@ -283,7 +345,7 @@ class IngestClient(object):
                 msg = "Problem moving file from {0} to {1}: {3}" \
                       .format(recfile, self._faildir, str(e))
                 self.log.exception(msg)
-                raise StateException(msg, cause=ex)
+                raise StateException(msg) from ex
 
     def _report_validation_errors(self, errs, name):
         if isinstance(errs, str):
@@ -383,6 +445,21 @@ class IngestClient(object):
                 out[state] = path
 
         return out
+
+    def forget(self, name):
+        """
+        remove all cached records with the given name, regardless of it status.
+        """
+        errs=[]
+        found = self.find_named(name)
+        for state in found:
+            try:
+                os.unlink(found[state])
+            except OSError as ex:
+                errs.append(f"Failed to remove {found[state]}: {str(ex)}")
+        if errs:
+            self.log.error("Failed to clear out memory of %s:\n  %s", name, 
+                           "\n  ".join(errs))
 
 
 class IngestServiceException(PDRException):
