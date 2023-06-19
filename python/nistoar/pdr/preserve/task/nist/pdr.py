@@ -28,7 +28,7 @@ class PDRBagFinalization(fw.AIPFinalization):
     :allow_replace:  allow an AIP to replace a previously preserved AIP with the same version number
                    (default: False).  Use with caution.
     :repo_access:  a configuration dictionary that describe access points to the public side of the 
-                   repository.  This is used to interigate details of previous publications of a
+                   repository.  This is used to interrogate details of previous publications of a
                    dataset.  
     :bag_builder:  a configuration dictionary for configuring the 
                    :py:class:`~nistoar.pdr.preserve.bagit.builder.BagBuilder` instance that will be 

@@ -143,6 +143,16 @@ class PreservationStateManager(PreservationStepsAware, metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
+    def unmark_completed(self, step: int):
+        """
+        indicate that the given step is being reverted and thus should not be marked as completed.
+        If it is so marked, it will be removed.  
+        :param int step:  the :py:class:`PreservationCompleted` constant indicating the step that has 
+                          been completed.  Multple steps can be so marked by OR-ing them together.  
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
     def _load(self):
         """
         load the state from its persistent stroage
@@ -356,6 +366,7 @@ class AIPFinalization(PreservationStep):
         :return:  False if this step cannot be undone even partially.
         :raise PreservationException:  if an error occurred while trying to undo the step
         """
+        statemgr.unmark_completed(statemgr.FINALIZATION)
         return True
 
     def clean_up(self, statemgr: PreservationStateManager):
@@ -390,6 +401,7 @@ class AIPValidation(PreservationStep):
         :return:  False if this step cannot be undone even partially.
         :raise PreservationException:  if an error occurred while trying to undo the step
         """
+        statemgr.unmark_completed(statemgr.VALIDATION)
         return True
 
     def clean_up(self, statemgr: PreservationStateManager):
@@ -471,6 +483,7 @@ class AIPPublication(PreservationStep):
         :return:  False if this step cannot be undone even partially.
         :raise PreservationException:  if an error occurred while trying to undo the step
         """
+        statemgr.unmark_completed(statemgr.PUBLICATION)
         return True
 
     def clean_up(self, statemgr: PreservationStateManager):

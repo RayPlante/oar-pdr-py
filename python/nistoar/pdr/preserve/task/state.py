@@ -15,6 +15,7 @@ from .. import PreservationStateError, PreservationException
 from nistoar.pdr.utils.io import LockedFile
 from nistoar.base.config import ConfigurationException
 from nistoar.pdr.publish.service import status
+from nistoar.pdr.utils.io import _PathTolerantJSONEncoder
 
 class JSONPreservationStateManager(PreservationStateManager):
     """
@@ -30,8 +31,9 @@ class JSONPreservationStateManager(PreservationStateManager):
                        _aipid_``_state.json``.  Otherwise it will be interpreted as a file path; its
                        parent directory must exist.
     :stage_dir:        a directory path where serialized AIP files can be written prior to archiving.
+    :working_dir:      a directory path where preservation task steps can write temporary data.  
     :keep_fresh:       if True (default), the persist state will be reloaded often (everytime information 
-                       is asked for.  Set this to False if it is expected that this instance will be 
+                       is asked for).  Set this to False if it is expected that this instance will be 
                        the only one updating this status.  
     """
 
@@ -131,7 +133,7 @@ class JSONPreservationStateManager(PreservationStateManager):
     def _cache(self):
         try:
             with LockedFile(self._cachefile, 'w') as fd:
-                json.dump(self._data, fd)
+                json.dump(self._data, fd, indent=2, cls=_PathTolerantJSONEncoder)
         except FileNotFoundError as ex:
             msg = "Trouble saving preservation state for AIP=%s to %s: directory not found: %s" \
                 % (self.aipid, self._cachefile, str(ex))
@@ -181,6 +183,19 @@ class JSONPreservationStateManager(PreservationStateManager):
 
         if self._pubstat and step & self.PUBLISHED:
             self._pubstat.update(status.PUBLISHED)   # this will update its message
+
+    def unmark_completed(self, step: int):
+        """
+        indicate that the given step is being reverted and thus should not be marked as completed.
+        If it is so marked, it will be removed.  
+        :param int step:  the :py:class:`PreservationCompleted` constant indicating the step that has 
+                          been completed.  Multple steps can be so marked by OR-ing them together.  
+        """
+        if step > self._all_steps:
+            raise ValueError(f"mark_complete(): Unrecognized steps included in step code: {step}")
+        if self.steps_completed & step > 0:
+            self._data["_completed"] = self.steps_completed & ~step
+            self.record_progress("reverting step...")
 
     def get_original_aip(self) -> str:
         """
@@ -259,7 +274,7 @@ class JSONPreservationStateManager(PreservationStateManager):
         This is typically called by a AIPArchiving implementation to get the list of files to archive.  
 
         :return:  a list of string paths (or URIs) pointing to the complete list of serialized AIP files
-                  that resulting from the serialization step.
+                  that resulted from the serialization step.
         """
         if self._keepfresh:
             self._load()
@@ -303,6 +318,24 @@ class JSONPreservationStateManager(PreservationStateManager):
 
         if self._pubstat:
             self._pubstat.record_progress(message)
+
+    def annotate(self, name, val):
+        """
+        annotate the publication status with the given data.  This method does nothing if this object
+        was not constructed with a SIPStatus instance
+        :param str name:  the name to save the data value as.  This will be saved under the (visible) 
+                          "user" data by default; if the name starts with "sys:", it will be saved 
+                          under the "sys" data that is not visible to API users.  
+        :param val:  a JSON-encodable data value 
+        """
+        if not self._pubstat:
+            return
+        annot_type = "user"
+        if name.startswith("sys:"):
+            annot_type = "sys"
+            name = name[len("sys:"):]
+        self._pubstat.data[annot_type][name] = val
+        self._pubstat.cache()
 
     def get_working_dir(self) -> str:
         """
