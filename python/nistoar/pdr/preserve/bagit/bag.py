@@ -37,7 +37,7 @@ class NISTBag(PreservationSystem):
         if not os.path.isdir(rootdir):
             raise StateException("Bag directory does not exist as a directory: "+
                                  rootdir, sys=self)
-        self._dir = rootdir
+        self._dir = str(rootdir)
         self._name = os.path.basename(rootdir)
 
         self._datadir = os.path.join(rootdir, "data")
