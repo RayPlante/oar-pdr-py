@@ -2,6 +2,7 @@
 Utility functions and classes for file reading and writing
 """
 from collections import OrderedDict, Mapping
+from pathlib import Path
 import json, os, threading
 try:
     import fcntl
@@ -207,6 +208,12 @@ def read_json(jsonfile, nolock=False):
     blab(log, "released SH")
     return out
 
+class _PathTolerantJSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, Path):
+            return str(o)
+        return json.JSONEncoder.default(self, o)
+
 def write_json(jsdata, destfile, indent=4, nolock=False):
     """
     write out the given JSON data into a file with pretty print formatting
@@ -223,7 +230,7 @@ def write_json(jsdata, destfile, indent=4, nolock=False):
         with LockedFile(destfile, 'a') as fd:
             blab(log, "Acquired exclusive lock for writing: "+str(destfile))
             fd.truncate(0)
-            json.dump(jsdata, fd, indent=indent, separators=(',', ': '))
+            json.dump(jsdata, fd, indent=indent, separators=(',', ': '), cls=_PathTolerantJSONEncoder)
         blab(log, "released EX")
     except Exception as ex:
         raise StateException("{0}: Failed to write JSON data to file: {1}"

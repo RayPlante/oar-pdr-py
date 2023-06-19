@@ -1,8 +1,10 @@
 import os, sys, pdb, json, subprocess, threading, time, logging
 import unittest as test
+from pathlib import Path
 
 from nistoar.testing import *
 import nistoar.pdr.utils.io as utils
+from nistoar.pdr.exceptions import StateException
 
 testdir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 testdatadir = os.path.join(testdir, 'data')
@@ -202,7 +204,29 @@ class TestJsonIO(test.TestCase):
         self.assertIn('@id', self.td)
         self.assertEqual(self.td['foo'], 'bar')
 
-    
+    def test_path_encoder(self):
+        p = Path("junk")
+        enc = json.JSONEncoder()
+        with self.assertRaises(TypeError):
+            enc.default(p)
+        with self.assertRaises(TypeError):
+            enc.default(5j)
+        enc = utils._PathTolerantJSONEncoder()
+        self.assertTrue(isinstance(enc.default(p), str))
+        with self.assertRaises(TypeError):
+            enc.default(5j)
+
+    def test_write_with_path(self):
+        data = utils.read_json(self.testdata)
+        data['workdir'] = Path("/tmp/work")
+        utils.write_json(data, self.jfile)
+        data = utils.read_json(self.jfile)
+        self.assertTrue(isinstance(data['workdir'], str))
+
+        data['complx'] = 5j
+        with self.assertRaises(StateException):
+            utils.write_json(data, self.jfile)
+        
 
 
 if __name__ == '__main__':
