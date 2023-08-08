@@ -3,14 +3,17 @@ Implementations of the presersvation task framework that are specific to the NIS
 and how it handles preservation.
 """
 
-import os, time, datetime, logging, json
+import os, time, datetime, logging, json, shutil
+from logging import Logger
 from pathlib import Path
 from collections import OrderedDict
+from typing import List
 
 from .. import framework as fw
 from nistoar.pdr.preserve.bagit import BagBuilder, BagWriteError, BagItException
 from nistoar.pdr.exceptions import ConfigurationException
 import nistoar.pdr.preserve.bagit.utils as bagutils
+from nistoar.pdr.preserve import PreservationStateError
 import nistoar.id.versions as verutils
 from nistoar.pdr.ingest import RMMIngestClient, DOIMintingClient
 from nistoar.pdr.distrib import (BagDistribClient, RESTServiceClient,
@@ -20,7 +23,7 @@ DEF_MBAG_VERSION = bagutils.DEF_MBAG_VERSION
 
 class PDRBagFinalization(fw.AIPFinalization):
     """
-    An iplementation of the AIP finalization step that applies some last-minute tweaks to the submitted 
+    An implementation of the AIP finalization step that applies some last-minute tweaks to the submitted 
     AIP bag before validation and serialization.  It also extracts key metadata products that will be 
     part of the final publishing step.  
 
@@ -33,10 +36,15 @@ class PDRBagFinalization(fw.AIPFinalization):
     :bag_builder:  a configuration dictionary for configuring the 
                    :py:class:`~nistoar.pdr.preserve.bagit.builder.BagBuilder` instance that will be 
                    used to make the final updates.
-    :doi_minter:   a configuration dictionary for configuring the DOI minting client used to stage the 
-                   DataCite record
-    :ingester:     a configuration dictionary for configuring the ingest client used to stage the 
-                   NERDm record
+    :ingest:       (dict) a configuration dictionary for the ingest functions that require preparation.
+                   recognized keys include ``rmm`` and ``doi`` (see more detail below).
+
+    The ``ingest`` configuration dictionary is also used by the PDRPublication class; the parameters 
+    used here include:
+    :doi:   a configuration dictionary for configuring the DOI minting client used to stage the 
+            DataCite record
+    :rmm:   a configuration dictionary for configuring the ingest client used to stage the 
+            NERDm record
     """
 
     def __init__(self, config=None):
@@ -242,6 +250,295 @@ class PDRBagFinalization(fw.AIPFinalization):
         fmt = self.cfg.get('bag_name_format')
         bver = self.cfg.get('mbag_version', DEF_MBAG_VERSION)
         return bagutils.form_bag_name(aipid, bagseq, aipver, bver, namefmt=fmt)
+
+class PDR1AIPArchiving(fw.AIPArchiving):
+    """
+    An implementation of the AIP archiving interface appropriate for data in the PDR.  
+
+    In this implementation, the AIP files are moved from a staging directory to a transfer directory.
+    Once in place there, another independent process is expected replicate the data into long-term 
+    storage in S3 which could take minutes or days to complete.  This implementation will wait until 
+    all files appear in the final bucket via a sleep-poll loop.
+
+    This implementation supports the following configuration parameters:
+    :store_dir:   (str) the storage transfer directory that files are copied to 
+    :public_bucket:  (str) the S3 address representing the final storage bucket where the files should
+                  eventually arrive to be considered complete.  
+    :allow_overwrite:  (bool) If False (default) do not allow pre-existing files with the same names as
+                  any being transfered from that staging area to be replaced; if any such files are 
+                  found in the transfer directory, the preservation step will fail.  If True, such files
+                  will be replaced.  
+    :polling:     (dict) a configuration dictionary that describes how the sleep-polling cycle evolves
+                  over time.
+    """
+    cksexts = ["sha256"]
+
+    def __init__(self, config=None):
+        """
+        instantiate the archiving step
+        :param dict config:  the configuration for this step; if not provided, defaults will apply.
+        """
+        if config is None:
+            config = {}
+        self.cfg = config
+        self.storedir = self.cfg.get("store_dir")
+        if not self.storedir:
+            raise ConfiguationException("Missing required config parameter: store_dir")
+        self.storedir = Path(self.storedir)
+        if not self.storedir.is_dir() or not os.access(self.storedir, os.W_OK):
+            raise ConfiguationException("store_dir is not an existing directory with write permission: "+
+                                        str(self.storedir))
+        self.finalbucket = self.cfg.get("public_bucket")
+        if not self.finalbucket:
+            raise ConfiguationException("Missing required config parameter: public_bucket")
+
+    def apply(self, statemgr: fw.PreservationStateManager):
+        """
+        apply the archiving step.  
+        """
+        log = statemgr.log.getChild("archiving")
+
+        if not statemgr.steps_completed & statemgr.SUBMITTED:
+            statemgr.record_progress("Archiving files to long-term storage")
+            self.launch_migration(statemgr, log)
+            statemgr.mark_completed(statemgr.SUBMITTED, "Files submitted to long-term storage")
+        
+        self.monitor_destination(statemgr, log)
+        statemgr.mark_completed(statemgr.ARCHIVED)
+
+    def launch_migration(self, statemgr: fw.PreservationStateManager, log: Logger):
+        """
+        start the AIP migration process.  In this implementation, the AIP files are copied to a 
+        staging directory where an external file synchronization process takes over to replicate
+        the files to multiple long-term storage locations.  When all files confirmed to be in the 
+        migration staging directory, they are removed from serialization staging area.
+        """
+        aipfiles = statemgr.get_serialized_files()
+        if not aipfiles:
+            raise PreservationStateError("No AIP files appear to be ready for transfer!")
+
+        # check for presence of aip files in store dir
+        if not self.cfg.get("allow_overwrite"):
+            found = [f for f in aipfiles if (self.storedir / os.path.basename(f)).exists()]
+            if found:
+                flst = "\n  "+found[0]
+                if len(found) > 1:
+                    flst += "...\n  "+found[-1]
+                raise PreservationStateError("Archived target files already found in LT store; " +
+                                             "won't overwrite:" + flst)
+
+        # prepare for transfer
+        cksfiles = [f for f in aipfiles if os.path.splitext(f)[-1].lstrip('.') in self.cksexts]
+        serfiles = [f for f in aipfiles if os.path.splitext(f)[-1].lstrip('.') not in self.cksexts]
+        if len(cksfiles) != len(serfiles):
+            raise PreservationStateError("Serialized AIP file count != Checksum file count; "
+                                         "Are AIPs really ready for transfe?")
+
+        cksdir = self._ensure_dir(self.storedir / f"_{os.path.basename(serfiles[0])}.ckstrx")
+        serdir = self._ensure_dir(self.storedir / f"_{os.path.basename(serfiles[0])}.trx")
+        statemgr.set_state_property("archiving:serialized_temp_store", str(serdir))
+        statemgr.set_state_property("archiving:checksum_temp_store", str(cksdir))
+ 
+        # downstream synchonization is triggeed by presence of SHA file, so transfe zip files first
+        try:
+            self._safe_copy(serfiles, serdir, statemgr)
+            self._safe_copy(cksfiles, cksdir, statemgr, True)
+        except Exception as ex:
+            log.exception("Failure occured while copying data to store directory: %s", str(ex))
+            log.info("Will roll back transfer")
+            raise
+
+        # all files successfully transfered; now move files out of temp locations
+        statemgr.record_progress("Archiving files: finishing up")
+        try: 
+            for f in serfiles:
+                f = os.path.basename(f)
+                os.rename(serdir/f, self.storedir/f)
+            for f in cksfiles:
+                f = os.path.basename(f)
+                os.rename(cksdir/f, self.storedir/f)
+        except Exception as ex:
+            raise fw.AIPArchivingException(f"Error while renaming archive files: {str(ex)}")
+
+    def revert(self, statemgr: fw.PreservationStateManager) -> bool:
+        """
+        Clean up any transfer artifacts (from a previous attempt) in preparation of a new transfer 
+        attempt.  Note that if the caller knows that a previous attempt was successful, the 
+        configuration must be updated to allow for overwrites as those files will not be removed. 
+        :return:  False if this step cannot be undone even partially
+        :raise PreservationException:  if an error occurred while trying to undo the step
+        """
+        self._clean_tmp_dest_dirs(statemgr)
+        statemgr.unmark_completed(statemgr.SUBMITTED|statemgr.ARCHIVED)
+        return True
+
+    def clean_up(self, statemgr: fw.PreservationStateManager):
+        """
+        Clean up any unneeded state that was created while executing this step.  
+        :raise PreservationException:  if an error occurred preventing the application of this step.
+        """
+        self._clean_tmp_dest_dirs(statemgr)
+
+    def _clean_tmp_dest_dirs(self, statemgr: fw.PreservationStateManager):
+        # clean up the temporary directories created to receive transfered files
+        tmpdir = statemgr.get_state_property("archiving:checksum_temp_store")
+        if tmpdir and os.path.isdir(tmpdir):
+            shutil.rmtree(tmpdir)
+        tmpdir = statemgr.get_state_property("archiving:serialized_temp_store")
+        if tmpdir and os.path.isdir(tmpdir):
+            shutil.rmtree(tmpdir)
+
+    def _ensure_dir(self, dirp):
+        if not dirp.exists():
+            try:
+                dirp.mkdir()
+            except Exception as ex:
+                raise PreservationStateError(f"Unable to create tmp dir in destination: {str(ex)}")
+        elif not dirp.is_dir():
+            raise PreservationStateError(f"Not a directory: {dirp}")
+        return dirp
+
+    def _safe_copy(self, srcfiles: List[str], destdir: Path, statemgr: fw.PreservationStateManager,
+                   ischkfile: bool=False):
+        # now copy each file
+        if ischkfile:
+            statemgr.record_progress("Archiving files to long-term storage: checksum files")
+        try:
+            for src in srcfiles:
+                archfile = os.path.basename(src)
+                if not ischkfile:
+                    statemgr.record_progress(f"Archiving files to long-term storage: {archfile}")
+                shutil.copy(src, destdir)
+        except OSError as ex:
+            statemgr.record_progress(f"Archiving files to long-term storage: failure detected on {archfile}")
+            statemgr.log.error("%s: Copy failure detected on %s: %s", statemgr.aipid, archfile, str(ex))
+            raise fw.AIPArchivingException(f"Archive copy failure on {archfile}: {str(ex)}",
+                                           statemgr.aipid) from ex
+
+    def monitor_destination(self, statemgr: fw.PreservationStateManager, log: Logger):
+        """
+        monitor PDR's public bucket by polling its contents and waiting for the presence of all 
+        of the serialized AIP files.  
+        """
+        pcfg = self.cfg.get("polling", {})
+        if not pcfg.get("wait_for_completion", True):
+            return
+        statemgr.record_progress("Archiving files: waiting for arrival in public bucket")
+        
+        aipfiles = [os.path.basename(f) for f in statemgr.get_serialized_files()]
+        if not aipfiles:
+            log.warn("%s: No AIP files to wait for", statemgr.aipid)
+            return
+
+        prefix = os.path.commonprefix(aipfiles)
+        cycletime = pcfg.get("cycle_time", 600)
+        if not isinstance(cycletime, (int, float)):
+            log.warn("config param polling.cycle_time not a number; defaulting to 10 min.")
+            cycletime = 600
+        faillim = pcfg.get("failure_limit", 0)
+        if not isinstance(faillim, int):
+            log.warn("config param polling.fail_limit not an integer; defaulting to -1")
+            faillim = -1
+
+        found = []
+        fails = 0
+        waittime = cycletime
+        while aipfiles:
+            try:
+                likefiles = self._findbyprefix(prefix)
+                fails = 0
+                for i in range(len(aipfiles)):
+                    f = aipfiles.pop(0)
+                    if f in likefiles:
+                        found.append(f)
+                    else:
+                        aipfiles.append(f)
+            except Exception as ex:
+                log.warn("Trouble polling for migrated files: %s", str(ex))
+                fails += 1
+                if faillim > 0 and fails > faillim:
+                    raise fw.AIPArchivingException(f"Too many polling errors (last one: {str(ex)}")
+
+            if aipfiles and found:
+                statemgr.record_progress("Archiving files: waiting for arrival of %d file%s" %
+                                         len(aipfiles), "s" if len(aipfiles) > 0 else "")
+
+            # If it looks like we're getting close to being done, reduce the waittime
+            if len(aipfiles) == 1:
+                waittime = waittime / 2
+                if waittime < 2:
+                    waittime = cycletime
+
+            if aipfiles:
+                time.sleep(waittime)
+
+        if not aipfiles:
+            statemgr.record_progress("All files successfully archived.")
+        
+    def _findbyprefix(self, prefix: str, location: str = None):
+        # Qery AWS S3 bucket for files starting with prefix
+        return []
+    
+
+class PDRPublication(fw.AIPPublication):
+    """
+    An implementation of the AIP publication interface appropriate for fully public data being published
+    into the PDR.  
+
+    This implementaion supports the following configuraiton parameters:
+    :store:    (dict) the configuration for an AIPStoreClient that will deliver the serialized AIPs
+                   to long-term storage.
+    :ingest:   (dict) a configuration dictionary for the ingest functions that require preparation.
+                   recognized keys include ``rmm`` and ``doi`` (see more detail below).
+
+    The ``ingest`` configuration dictionary is also used by the PDRPublication class; the parameters 
+    used here include:
+    :doi:   a configuration dictionary for configuring the DOI minting client used to submit the 
+            DataCite record; see the :py:class:`~nistoar.pdr.ingest.dc.client.DOIMintingClient` class
+            for the supported sub-parameters.
+    :rmm:   a configuration dictionary for configuring the ingest client used to submit the 
+            NERDm record; see the :py:class:`~nistoar.pdr.ingest.rmm.client.IngestClient` class
+            for the supported sub-parameters.
+    """
+
+    def __init__(self, config=None):
+        """
+        instantiate the finalization step
+        :param dict config:  the configuration for this step; if not provided, defaults will apply.
+        """
+        if config is None:
+            config = {}
+        self.cfg = config
+
+        scfg = self.cfg.get('store')
+        if not scfg:
+            raise ConfigurationException("Missing required configparameter: store")
+        self._storer = PDRStoreClient(scfg)
+
+        icfg = self.cfg.get('ingest', {})
+        self._ingester = None
+        ingcfg = icfg.get('rmm')
+        if ingcfg and ingcfg.get('service_endpoint'):
+            self._ingester = RMMIngestClient(ingcfg)
+        if not self._ingester:
+            raise ConfigurationException("ingest.rmm not configured")
+
+        self._doiminter = None
+        dmcfg = icfg.get('doi')
+        if dmcfg and dmcfg.get('datacite_api'):
+            self._doiminter = DOIMintingClient(dmcfg)
+
+    def apply(self, statemgr: fw.PreservationStateManager):
+        """
+        apply the final publication step.  This implementation assumes details specific to the NIST
+        PDR system as well as the use of ingest staging done during the finalization step (as with 
+        :py:class:`PDRBagFinalization`.  
+        """
+        log = statemgr.log.getChild("publication")
+
+        aipid = statemgr.aipid
+
+    
 
 class RepositoryAccess:
     """

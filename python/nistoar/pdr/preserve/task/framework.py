@@ -214,7 +214,7 @@ class PreservationStateManager(PreservationStepsAware, metaclass=ABCMeta):
         Set the list of files that were (or will be) created from serializing the AIP.
 
         This is typically called by a AIPSerialization implementation to report where it wrote (or 
-        will write) its files.  The AIPArchiving step can then use :py:meth:`get_serialized_aip_files`
+        will write) its files.  The AIPArchiving step can then use :py:meth:`get_serialized_files`
         to get the list of files to archive.  This should be a complete list--not a partial one.
         The files are not required to exist at these locations at the time this function is called.  
 
@@ -432,38 +432,6 @@ class AIPArchiving(PreservationStep):
     """
     an abstract interface for migrating serialized AIP files to long-term storage.  
     """
-
-    @abstractmethod
-    def submitted_to_archive(self, statemgr: PreservationStateManager) -> bool:
-        """
-        Submit the serialized AIP files for migration to long-term storage.  Migration could
-        take up to days long to complete, so this function just starts the process.  Calling
-        :py:meth:`transfer_complete` can be used to determine if the migration has finished.
-        :raise AIPArchivingException:  if an error occurred preventing successful submission
-                                       of the AIP files for transfer.
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def transfer_complete() -> bool:
-        """
-        Return True if all serialized AIP files have been fully migrated to long-term storage.  
-        This is used to determine if the last step of the preservation process should be 
-        completed.
-        :raise PreservationException:  if an error occurred while trying to determine the state
-                                       of the transfer
-        """
-        raise NotImplementedError()
-
-    def apply(self, statemgr: PreservationStateManager):
-        """
-        Submit the serialized AIP files for migration to long-term storage.  By default,
-        this trivially calls :py:meth:`submitted_to_archive`.  One should expect that the 
-        outcome from any previous runs of this step will be overwritten.  
-        :raise AIPArchivingException:  if an error occurred preventing successful submission
-                                       of the AIP files for transfer.
-        """
-        self.submit_to_archive();
 
     def _report_cleanup_failure(self, statemgr: PreservationStateManager, ex: Exception):
         if statemgr.log:
