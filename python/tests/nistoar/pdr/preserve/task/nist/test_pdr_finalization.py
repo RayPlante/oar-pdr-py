@@ -174,6 +174,8 @@ class TestPDRBagFinalization(test.TestCase):
     def test_ctor(self):
         self.assertEqual(self.fin.cfg, self.cfg)
         self.assertEqual(self.mgr.aipid, "mds2-7223")
+        self.assertTrue(self.fin._ingester)
+        self.assertTrue(self.fin._doiminter)
 
     def test_null_revert(self):
         self.fin.revert(self.mgr)
@@ -195,6 +197,8 @@ class TestPDRBagFinalization(test.TestCase):
         self.assertEqual(self.mgr.get_finalized_aip(), str(self.workdir/("mds2-7223.1_1_0.mbag0_4-2")))
         self.assertTrue(self.ingestdir/"staging"/"mds2-7223.json")
         self.assertTrue(self.dcdir/"staging"/"mds2-7223.json")
+        self.assertEqual(self.mgr.steps_completed, self.mgr.FINALIZED)
+        self.assertEqual(self.mgr.get_state_property("nerdm:version"), "1.1.0")
         
     def test_run(self):
         bgb = BagBuilder.forBag(self.mgr.get_original_aip())

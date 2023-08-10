@@ -122,7 +122,7 @@ class PDRBagFinalization(fw.AIPFinalization):
                     log.warning("Preservation set to replace previous published version: %s", newver)
                 else:
                     raise fw.AIPFinalizationException(
-                        "f{aipid}: {newver} AIP version already published; won't replace!"
+                        f"{aipid}: {newver} AIP version already published; won't replace!"
                     )
                         
 
@@ -161,6 +161,7 @@ class PDRBagFinalization(fw.AIPFinalization):
 
         # stage NERDm record for publishing
         nerdm = bldr.bag.nerdm_record()
+        statemgr.set_state_property("nerdm:version", nerdm.get("version", "0"))
         if self._ingester:
             try:
                 self._ingester.stage(nerdm, aipid)
@@ -501,19 +502,21 @@ class PDRPublication(fw.AIPPublication):
             for the supported sub-parameters.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, notifier=None):
         """
-        instantiate the finalization step
+        instantiate the publication step
         :param dict config:  the configuration for this step; if not provided, defaults will apply.
         """
         if config is None:
             config = {}
         self.cfg = config
+        self._notifier = notifier
 
+        # client for requesting that data be cached
         scfg = self.cfg.get('store')
-        if not scfg:
-            raise ConfigurationException("Missing required configparameter: store")
-        self._storer = PDRStoreClient(scfg)
+        # if not scfg:
+        #     raise ConfigurationException("Missing required configparameter: store")
+        # self._storer = PDRStoreClient(scfg)
 
         icfg = self.cfg.get('ingest', {})
         self._ingester = None
@@ -535,9 +538,50 @@ class PDRPublication(fw.AIPPublication):
         :py:class:`PDRBagFinalization`.  
         """
         log = statemgr.log.getChild("publication")
-
         aipid = statemgr.aipid
+        version = statemgr.get_state_property("nerdm:version", "?")
+        statemgr.record_progress("Releasing metadata to the PDR")
 
+        # TODO: submit for caching
+
+        if self._ingester:
+            # submit NERDm record to RMM ingest service
+            try:
+                if not self._ingester.is_staged(aipid):
+                    PreservationStateException(f"No staged RMM record found for AIP-ID={aipid}")
+                self._ingester.submit(aipid)
+                log.info("Submitted NERDm record to RMM")
+            except Exception as ex:
+                msg = f"Failed to ingest record with name={aipid} into RMM: {str(ex)}"
+                log.exception(msg)
+                log.info("Ingest service endpoint: %s", self._ingester.endpoint)
+
+                if self._notifier:
+                    self._notifier.alert("ingest.failure", origin=self.name,
+                                         summary=f"NERDm ingest failure: {aipid}", 
+                                         desc=msg, id=aipid, version=version)
+
+        if self._doiminter:
+            # submit the DOI metadata to DataCite
+            try:
+                if not self._doiminter.is_staged(aipid):
+                    PreservationStateException(f"No staged DOI record found for AIP-ID={aipid}")
+                self._doiminter.submit(aipid)
+                log.info("Submitted DOI record to DataCite")
+            except Exception as ex:
+                msg = f"Failed to submit DOI record with name={aipid} to DataCite: {str(ex)}"
+                log.exception(msg)
+                log.info("DOI minter service endpoint: %s", self._doiminter.dccli._ep)
+
+                if self._notifier:
+                    self._notifier.alert("doi.failure", origin=self.name,
+                                         summary="NERDm ingest failure: {aipid}", 
+                                         desc=msg, id=aipid, version=version)
+
+        statemgr.mark_completed(statemgr.PUBLISHED, "AIP is released")
+
+    def revert(self, statemgr: fw.PreservationStateManager):
+        return False
     
 
 class RepositoryAccess:

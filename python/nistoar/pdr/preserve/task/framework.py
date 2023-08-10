@@ -859,7 +859,7 @@ class AIPArchivingException(PreservationTaskException):
 
 class AIPPublicationException(PreservationTaskException):
     """
-    an exception that occurs while attempting to apply the finalization step in a processing task
+    an exception that occurs while attempting to apply the publication step in a processing task
     """
     def __init__(self, msg=None, aipid=None, errors=None, task=None):
         """
@@ -878,5 +878,41 @@ class AIPPublicationException(PreservationTaskException):
             msg = self._append_error_preview(msg, errors)
         super(AIPPublicationException, self).__init__(msg, aipid, task, errors)
 
+class IngestError(AIPPublicationException):
+    """
+    an exception that occurs while attempting to apply the publication step in a processing task
+    """
+    def __init__(self, aipid, msg=None, errors=None):
+        """
+        create the exception, optionally list things that went wrong for the AIP
+        :param str     msg:  a general message describing the failure
+        :param str   aipid:  the ID of the AIP being processed
+        :param list errors:  a list of specific error messages indicating the multiple errors 
+                             that occurred.
+        """
+        if not msg:
+            msg = "Failure ingesting AIP into repository"
+            if aipid:
+                msg += f": {aipid}"
+            msg = self._append_error_preview(msg, errors)
+        super(IngestError, self).__init__(msg, aipid, task, errors)
 
+class DOISubmissionError(AIPPublicationException):
+    """
+    an exception that occurs while attempting to apply the publication step in a processing task
+    """
+    def __init__(self, aipid, msg=None, errors=None):
+        """
+        create the exception, optionally list things that went wrong for the AIP
+        :param str     msg:  a general message describing the failure
+        :param str   aipid:  the ID of the AIP being processed
+        :param list errors:  a list of specific error messages indicating the multiple errors 
+                             that occurred.
+        """
+        if not msg:
+            msg = "Failure submitting DOI metadata"
+            if aipid:
+                msg += f"for AIP={aipid}"
+            msg = self._append_error_preview(msg, errors)
+        super(DOISubmissionError, self).__init__(msg, aipid, task, errors)
 
