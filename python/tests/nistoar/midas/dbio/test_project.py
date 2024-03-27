@@ -1,4 +1,4 @@
-import os, json, pdb, logging, tempfile
+import os, json, pdb, logging, tempfile, re
 import unittest as test
 
 from nistoar.midas.dbio import inmem, base
@@ -139,6 +139,79 @@ class TestProjectService(test.TestCase):
         self.assertEqual(prec.id, "mdm1:0003")
         self.assertEqual(prec.data, {"color": "red"})
         self.assertEqual(prec.meta, {"temper": "dark"})
+
+    def test_delete_new_record(self):
+        self.create_service()
+        prec = self.project.create_record("gurn", {"color": "red"}, {"temper": "dark"})
+        prec = self.project.get_record(prec.id)
+        self.assertIsNone(prec.status.published_as)  # never been published
+
+        dprec = self.project.delete_record(prec.id)
+        self.assertIsNone(dprec)
+        with self.assertRaises(project.ObjectNotFound):
+            self.project.get_record(prec.id)
+
+    def test_restore_last_published_data(self):
+        self.create_service()
+        prec = self.project.create_record("gurn", {"color": "red"}, {"temper": "dark"})
+        with self.assertRaises(ValueError):
+            self.project._restore_last_published_data(prec)
+
+        recd = prec.to_dict()
+        recd['id'] = "ark:/88434/" + re.sub(r':', '-', prec.id)
+        recd['name'] = recd['id']
+        prec.status.publish(recd['id'], "1.0.0")
+        prec.save()
+
+        pubcli = self.project.dbcli.client_for(self.project.dbcli.project + "_latest")
+        pubrec = project.ProjectRecord(pubcli.project, recd, pubcli)
+        pubrec.save()
+        pubrec = pubcli.get_record_for(recd['id'])
+        self.assertEqual(pubrec.id, recd['id'])
+        self.assertTrue(pubrec.id.startswith("ark:/"))
+
+        self.project.update_data(prec.id, {"title": "Now."})
+        prec = self.project.get_record(prec.id)
+        self.assertEqual(prec.data.get('color'), "red")
+        self.assertEqual(prec.data.get('title'), "Now.")
+        self.assertEqual(prec.status.state, status.EDIT)
+
+        self.project._restore_last_published_data(prec)
+        prec = self.project.get_record(prec.id)
+        self.assertEqual(prec.data.get('color'), "red")
+        self.assertIsNone(prec.data.get('title'))
+        self.assertEqual(prec.status.state, status.PUBLISHED)
+
+    def test_delete_revision(self):
+        self.create_service()
+        prec = self.project.create_record("gurn", {"color": "red"}, {"temper": "dark"})
+        with self.assertRaises(ValueError):
+            self.project._restore_last_published_data(prec)
+
+        recd = prec.to_dict()
+        recd['id'] = "ark:/88434/" + re.sub(r':', '-', prec.id)
+        recd['name'] = recd['id']
+        prec.status.publish(recd['id'], "1.0.0")
+        prec.save()
+
+        pubcli = self.project.dbcli.client_for(self.project.dbcli.project + "_latest")
+        pubrec = project.ProjectRecord(pubcli.project, recd, pubcli)
+        pubrec.save()
+        pubrec = pubcli.get_record_for(recd['id'])
+        self.assertEqual(pubrec.id, recd['id'])
+        self.assertTrue(pubrec.id.startswith("ark:/"))
+
+        self.project.update_data(prec.id, {"title": "Now."})
+        prec = self.project.get_record(prec.id)
+        self.assertEqual(prec.data.get('color'), "red")
+        self.assertEqual(prec.data.get('title'), "Now.")
+        self.assertEqual(prec.status.state, status.EDIT)
+
+        self.project.delete_record(prec.id)
+        prec = self.project.get_record(prec.id)
+        self.assertEqual(prec.data.get('color'), "red")
+        self.assertIsNone(prec.data.get('title'))
+        self.assertEqual(prec.status.state, status.PUBLISHED)
 
     def test_get_data(self):
         self.create_service()
