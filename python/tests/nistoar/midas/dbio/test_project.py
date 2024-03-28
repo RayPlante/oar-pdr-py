@@ -167,6 +167,7 @@ class TestProjectService(test.TestCase):
 
         pubcli = self.project.dbcli.client_for(self.project.dbcli.project + "_latest")
         pubrec = project.ProjectRecord(pubcli.project, recd, pubcli)
+        pubrec.status.set_state(status.SUBMITTED)
         pubrec.save()
         pubrec = pubcli.get_record_for(recd['id'])
         self.assertEqual(pubrec.id, recd['id'])
@@ -182,7 +183,7 @@ class TestProjectService(test.TestCase):
         prec = self.project.get_record(prec.id)
         self.assertEqual(prec.data.get('color'), "red")
         self.assertIsNone(prec.data.get('title'))
-        self.assertEqual(prec.status.state, status.PUBLISHED)
+        self.assertEqual(prec.status.state, status.SUBMITTED)
 
     def test_delete_revision(self):
         self.create_service()
@@ -198,6 +199,7 @@ class TestProjectService(test.TestCase):
 
         pubcli = self.project.dbcli.client_for(self.project.dbcli.project + "_latest")
         pubrec = project.ProjectRecord(pubcli.project, recd, pubcli)
+        pubrec.status.set_state(status.PUBLISHED)
         pubrec.save()
         pubrec = pubcli.get_record_for(recd['id'])
         self.assertEqual(pubrec.id, recd['id'])
@@ -422,7 +424,7 @@ class TestProjectService(test.TestCase):
         prec = self.project.get_record(prec.id)
         self.assertEqual(prec.data.get("@version"), "1.0.0")
         self.assertEqual(prec.data.get("@id"), "ark:/88434/mdm1-0003")
-        self.assertEqual(prec.status.state, "published")
+        self.assertEqual(prec.status.state, "submitted")
 
         pubcli = self.project.dbcli.client_for(self.project.dbcli.project+"_latest")
         pubrec = pubcli.get_record_for(prec.data["@id"])

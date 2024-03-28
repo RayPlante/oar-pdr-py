@@ -214,7 +214,7 @@ class ProjectService(MIDASSystem):
             prec.data = pubrec.data
 
             if reset_state:
-                prec.status.set_state(status.PUBLISHED)
+                prec.status.set_state(pubrec.status.state)
             prec.status.act(self.STATUS_ACTION_RESTORE, message or defmsg)
             prec.save()
             
@@ -930,7 +930,7 @@ class ProjectService(MIDASSystem):
                 if _prec.data.get('@version', '1.0.0') == '1.0.0':
                     message = "Initial version " + poststat
                 else:
-                    message = "Revision " + postat
+                    message = "Revision " + poststat
 
             # record provenance record
             self.dbcli.record_action(Action(Action.PROCESS, _prec.id, self.who, message, {"name": "submit"}))
@@ -964,6 +964,7 @@ class ProjectService(MIDASSystem):
                              not due to anything the client did, but rather reflects a system problem
                              (e.g. from a downstream service). 
         """
+        endstate = status.SUBMITTED    # or could be status.PUBLISHED
         try:
             latestcli = self.dbcli.client_for(f"{self.dbcli.project}_latest", AUTOADMIN)
             versioncli = self.dbcli.client_for(f"{self.dbcli.project}_version", AUTOADMIN)
@@ -974,8 +975,10 @@ class ProjectService(MIDASSystem):
             recd['id'] += "/pdr:v/" + recd['data'].get("@version", "0")
             version = ProjectRecord(versioncli.project, deepcopy(recd), versioncli)
 
-            # Fix permissions
+            # Fix permissions, state
             for pubrec in (latest, version):
+                pubrec.status.set_state(endstate)
+
                 # no one can delete, write, or admin (except superusers)
                 pubrec.acls.revoke_perm_from_all(ACLs.DELETE)
                 pubrec.acls.revoke_perm_from_all(ACLs.WRITE)
@@ -993,7 +996,7 @@ class ProjectService(MIDASSystem):
             self.log.error("%s: Problem with default publication submission: %s", prec.id, str(ex))
             raise SubmissionFailed() from ex
 
-        return status.PUBLISHED
+        return endstate
 
 
                     
