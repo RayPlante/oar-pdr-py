@@ -36,6 +36,7 @@ DEF_GROUPS_SHOULDER = "grp0"
 
 PUBLIC_GROUP = DEF_GROUPS_SHOULDER + ":public"    # all users are implicitly part of this group
 ANONYMOUS = PUBLIC_GROUP
+AUTOADMIN = "dbio:admin"     # a superuser identity that should only be used by internal dbio code
 
 __all__ = ["DBClient", "DBClientFactory", "ProjectRecord", "DBGroups", "Group", "ACLs", "PUBLIC_GROUP", 
            "ANONYMOUS", "DAP_PROJECTS", "DMP_PROJECTS", "ObjectNotFound", "NotAuthorized", "AlreadyExists"]

@@ -144,7 +144,7 @@ from copy import deepcopy
 import jwt
 
 from . import system
-from .dbio.base import DBClientFactory
+from .dbio.base import DBClientFactory, AUTOADMIN
 from .dbio.wsgi import project as prj, SubApp, Handler, DBIOHandler
 from .dap.service import mdsx, mds3
 from .dbio.inmem import InMemoryDBClientFactory
@@ -584,6 +584,7 @@ class MIDASApp:
         subj = userinfo.get('sub')
         email = userinfo.get('userEmail','')
         group = "public"
+
         if not subj:
             log.warning("User token is missing subject identifier; defaulting to anonymous")
             subj = "anonymous"
@@ -592,6 +593,14 @@ class MIDASApp:
             subj = subj[:-1*len("@nist.gov")]
         elif email.endswith("@nist.gov"):
             group = "nist"
+
+        blacklist = deepcopy(self.cfg.get("user_blacklist", []))
+        blacklist.append(AUTOADMIN)
+        if subj in blacklist:
+            log.warning("Attempt to authenticate as blacklisted ID: %s; dropping ID to anonymous", subj)
+            log.info("Credential data: %s", str(userinfo))
+            subj = "anonymous"
+            group = "public"
 
         umd = dict((k,v) for k,v in userinfo.items()
                          if k not in ["userEmail", "sub"])
