@@ -146,7 +146,7 @@ import jwt
 
 from . import system
 from .dbio.base import DBClientFactory
-from .dbio.wsgi import project as prj, DBIOHandler
+from .dbio.wsgi import project as prj, group as grp, DBIOHandler
 from nistoar.web.rest import (ServiceApp, Handler, Agent, AuthenticatedWSGIApp,
                               authenticate_via_jwt)
 from .dap.service import mdsx, mds3
@@ -532,7 +532,8 @@ _MIDASServiceApps = {
     "dap/mds3":  mds3.DAPApp,
 #    "nsdi/v1":   nsdiv1.NSDIndexerAppFactory
     "nsd/oar1":  PeopleServiceFactory(oar1),
-    "nsd/nsd1":  PeopleServiceFactory(nsd1)
+    "nsd/nsd1":  PeopleServiceFactory(nsd1),
+    "grp0": grp.MIDASGroupApp.factory_for()
 }
 
 class MIDASApp(AuthenticatedWSGIApp):

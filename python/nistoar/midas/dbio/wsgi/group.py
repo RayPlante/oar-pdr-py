@@ -35,9 +35,9 @@ from nistoar.midas.dbio.base import Group, DBGroups
 
 import logging
 
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s [%(levelname)s] %(message)s')
-logger = logging.getLogger(__name__)
+# logging.basicConfig(level=logging.DEBUG,
+#                     format='%(asctime)s [%(levelname)s] %(message)s')
+# logger = logging.getLogger(__name__)
 
 
 class GroupService:
@@ -364,7 +364,7 @@ class MIDASGroupApp(ServiceApp):
         shoulder = parts[0]
         subpath = parts[1] if len(parts) > 1 else ""
 
-        logger.debug(f"subpath {str(subpath)}")
+        self.log.debug(f"subpath {str(subpath)}")
 
         if not subpath:
             # => /<shoulder> with no further subpath => create group

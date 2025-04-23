@@ -22,24 +22,26 @@ from nistoar.midas.dbio.inmem import InMemoryDBClientFactory
 from nistoar.midas.dbio.mongo import MongoDBClientFactory
 from nistoar.midas.dbio.wsgi import group
 from nistoar.pdr.utils.prov import Agent
+from nistoar.base import config
 
 tmpdir = tempfile.TemporaryDirectory(prefix="_test_group.")
 rootlog = logging.getLogger()
 loghdlr = None
 
 def setUpModule():
-    global loghdlr
-    rootlog.setLevel(logging.DEBUG)
-    loghdlr = logging.FileHandler(os.path.join(tmpdir.name, "test_group.log"))
-    loghdlr.setLevel(logging.DEBUG)
-    rootlog.addHandler(loghdlr)
+#    global loghdlr
+#    rootlog.setLevel(logging.DEBUG)
+#    loghdlr = logging.FileHandler(os.path.join(tmpdir.name, "test_group.log"))
+#    loghdlr.setLevel(logging.DEBUG)
+#    rootlog.addHandler(loghdlr)
+    config.configure_log(os.path.join(tmpdir.name, "test_group.log"))
 
 def tearDownModule():
-    global loghdlr
-    if loghdlr:
-        rootlog.removeHandler(loghdlr)
-        loghdlr.flush()
-        loghdlr.close()
+    if config._log_handler:
+        rootlog.removeHandler(config._log_handler)
+        config._log_handler.flush()
+        config._log_handler.close()
+        config._log_handler = None
     tmpdir.cleanup()
 
 test_agent = Agent("midas", Agent.USER, "tester1", "midas")
@@ -74,9 +76,9 @@ class TestMIDASGroupApp(test.TestCase):
         }
         self.dbfact = InMemoryDBClientFactory({}, {})
         # Create the GroupServiceFactory
-        self.svcfactory = group.GroupServiceFactory(self.dbfact, self.cfg, rootlog)
+        self.svcfactory = group.GroupServiceFactory(self.dbfact, self.cfg, rootlog.getChild("MIDAS.dbio.groups.lots.of.children.svc"))
         # Create the main WSGI app
-        self.app = group.MIDASGroupApp(self.svcfactory, rootlog, self.cfg)
+        self.app = group.MIDASGroupApp(self.svcfactory, rootlog.getChild("MIDAS.dbio.groups.lots.of.children.wsgi"), self.cfg)
 
         self.rootpath = "/midas/group/"
         self.resp = []

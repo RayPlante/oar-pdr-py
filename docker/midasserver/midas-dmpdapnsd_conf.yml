@@ -12,6 +12,21 @@ about:
    describedBy: "http://localhost:9091/midas/docs"
    href: "http://localhost:9091/midas/"
 services: 
+   group:
+      about:
+         message:     "Group Management Service"
+         title:       "MIDAS Group Management API"
+         describedBy: "http://localhost:9091/docs/groupsvc-elements.html"
+         href:        "http://localhost:9091/midas/group"
+      default_convention: grp0
+      conventions: 
+         grp0:
+            about: 
+               title:       "MIDAS Group Management API (grp0 convention)"
+               describedBy: "http://localhost:9091/docs/groupsvc-elements.html"
+               href:        "http://localhost:9091/midas/group/grp0"
+               version:     grp0
+
    dap:
       about: 
          message:     "DMP Service is available"
